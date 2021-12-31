@@ -1,0 +1,137 @@
+/* Bayesian-ab-app css */
+
+/* Limit width on big screens */
+body {
+	max-width: 1600px;
+	margin: auto;
+}
+
+/* Set the main body/text font */
+p, a, body {
+    font-family: "Lato", helvetica,arial,sans-serf;
+    font-size: 1.1em;
+    margin: 5px 0 5px 0;
+}
+
+/* Section headings */
+.section-heading {
+  font-size: 1.75em;
+}
+
+/* Numerical inputs */
+.form-control {
+  font-size: 16px;
+  padding: 0 10px;
+  /*background-color: #bdd4f9;
+  border: none;*/
+  height: 30px;
+  width: 150px;
+}
+
+/* Input container widths */
+.shiny-input-container:not(.shiny-input-container-inline) {
+  width: 400px;
+}
+
+/* SRM Warning */
+.srm_msg {
+  color: #ff0039;
+  font-weight: 500;
+}
+
+/* Button formats */
+.btn {
+	font-size: 12px;
+    padding: 6px;
+    background: #1967be;
+    color: white;
+    border-color: #868383;
+}
+
+/* pdf button */
+#exportpdf {
+	margin: 15px;
+}
+
+/* Set SDI logo size */
+.navbar-logo img {
+	max-width: 150px;
+	margin-top:13px;
+}
+
+/* LOTS of stuff here just to get the navigation bar in order */
+
+/* Navbar lineheight */
+.navbar-nav>li>a {
+	line-height: 1.42857143;
+	padding-top: 10px !important;
+	padding-bottom: 10px !important;
+}
+
+.navbar-inverse {
+  background-color: #221f20;
+  border-color: none;
+  padding: 0px;
+}
+
+.navbar-right {
+  font-family: "Lato",helvetica,arial,sans-serif;
+  position: absolute;
+  display: block;
+  font-size: 1.2em;
+  color: white;
+}
+
+ul.nav.navbar-nav.navbar-right {
+  background: #009CAB;
+  visibility: visible;
+  opacity: 1;
+  display: block;
+  position: relative;
+  transition: all 0.5s ease;
+  padding: 10px 15px;
+  margin: 7px;
+}
+
+ul.nav.navbar-nav.navbar-right::before {
+  content: "More Experimentation Tools";
+  }
+
+ul.nav.navbar-nav.navbar-right:hover > li
+{
+  visibility: visible;
+  opacity: 1;
+  display: block;
+}
+
+ul.nav.navbar-nav.navbar-right li {
+  color: #fff;
+  display: none;
+  visibility: hidden;
+  opacity: 0;
+  float: left;
+  padding: 0;
+  position: relative;
+  transition-duration: 0.5s;
+}
+
+ul.nav.navbar-nav.navbar-right li a {
+  color: #fff;
+  font-weight: normal;
+  font-size: 0.9em;
+    padding: 5px 0 5px 5px;
+}
+
+ul.nav.navbar-nav.navbar-right li>a:hover {
+  background-color: #004D53;
+}
+
+ul.nav.navbar-nav.navbar-right li {
+  clear: both;
+  width: 100%;
+}
+
+/* End all the stuff for the global nav */
+
+
+

@@ -17,6 +17,29 @@ output:
 runtime: shiny
 ---
 
+```{r to_do, include=FALSE}
+# Deal with Bayes Factor vs Posterior distribution descriptions (CIs, ROPEs)
+# Look at bayestestR https://easystats.github.io/bayestestR/articles/bayes_factors.html
+# 
+# Bayes Factor
+# Bayes Factors (BFs) are indices of relative evidence of one “model” over another.
+
+# In their role as a hypothesis testing index, they are to Bayesian framework what a 𝑝-value is to the classical/frequentist framework. In significance-based testing, 𝑝-values are used to assess how unlikely are the observed data if the null hypothesis were true, while in the Bayesian model selection framework, Bayes factors assess evidence for different models, each model corresponding to a specific hypothesis.
+# 
+# MCMC Explanation - https://nbviewer.org/github/CamDavidsonPilon/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers/blob/master/Chapter3_MCMC/Ch3_IntroMCMC_PyMC3.ipynb
+# Start at current position.
+# Propose moving to a new position (investigate a pebble near you).
+# Accept/Reject the new position based on the position's adherence to the data and prior distributions (ask if the pebble likely came from the mountain).
+# If you accept: Move to the new position. Return to Step 1.
+# Else: Do not move to new position. Return to Step 1.
+# After a large number of iterations, return all accepted positions.
+# only the current position matters (new positions are investigated only near the current position). We can describe this property as memorylessness, i.e. the algorithm does not care how it arrived at its current position, only that it is there.
+# 
+
+
+```
+
+
 ```{r setup, include=FALSE}
 library(ggplot2)
 library(shiny)
@@ -328,6 +351,7 @@ Row {data-height=350}
 ```{r prob_best}
 rmarkdown::render_delayed({
   renderPlot({
+    # Info haven't yet read on manipulatinggplot layers https://cran.r-project.org/web/packages/gginnards/vignettes/user-guide-2.html
     prob <- plot(rctRslts$bt,
          percentLift = -1,
          priors = FALSE,
@@ -336,10 +360,11 @@ rmarkdown::render_delayed({
       xlab("Difference in Conversion Rates") +
       ylab("Likelihood") +
       scale_fill_manual(values = c(input$hexb,input$hexa)) +
+      #scale_discrete_manual(values = c("white","white"), aesthetics = c("color")) +
       #scale_alpha_manual(values = c(0.5,0.5)) +
       #scale_color_manual(values = c("white","white")) +
       #stat_bin(bins = 50) +
-      scale_x_continuous(labels = scales::percent) +
+      #scale_x_continuous(labels = scales::percent) +
       scale_y_continuous(expand = c(0, 0)) +
       rctTheme$main
   })

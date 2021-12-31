@@ -1,0 +1,464 @@
+---
+title: "Experimentation Tools | Bayesian A/B Test Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    css: styles2.css
+    vertical_layout: scroll
+    logo: logo-sm.png
+    favicon: favicon.png
+    #fig_height: 3
+    navbar: 
+      - { title: "Sequential App", href: "https://sdidev.shinyapps.io/sequential-test-calculator/" }
+      - { title: "Sample Size", href: "https://sdidev.shinyapps.io/sample-size-calculator/" }
+      - { title: "Runtime", href: "https://sdidev.shinyapps.io/sample-size-calculator-runtime/" }
+      - { title: "Impact Simulation", href: "https://sdidev.shinyapps.io/test-result-simulator/" }
+      - { title: "Experimentation ROI", "href:https://sdidev.shinyapps.io/experimentation-roi/" }
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(Rcpp) # depdendency for rstanarm package
+library(rstanarm)
+library(bayestestR)
+library(dplyr)
+library(tidyr)
+library(insight)
+library(ggplot2)
+library(see)
+library(flexdashboard)
+library(shiny)
+
+# SDI colors are
+# Light Orange: F58220
+# Orange:FF6D00
+# Dark Orange: E45C00
+# Light Teal: 00A2B1
+# Teal: 00747F
+# Dark Teal: 004E54
+# Dark Gray: 515151
+# Light Gray: 9A9896
+
+```
+
+<script>
+$('.navbar-logo').wrap('<a href="https://www.searchdiscovery.com/how-we-help/services/optimization/" target=_blank>');
+</script>
+
+```{r url_bookmarking, include=FALSE}
+# The code below uses query parameters in the URL of the page so that the total configuration 
+# is captured in the URL, enabling someone to "come back" to the exact configuration at any point.
+# See details at: https://shiny.rstudio.com/reference/shiny/1.5.0/updateQueryString.html.
+# And at https://shiny.rstudio.com/articles/bookmarking-state.html
+# This chunk is wrapped in a <div> that sets the display to none because, otherwise, a little
+# bit of JS gets rendered that chunk options are unable to turn off.
+enableBookmarking("url")
+setBookmarkExclude(c("calculate_posterior")) # List any inputs to exclude here
+observe({
+  # Trigger this observer every time an input changes
+  reactiveValuesToList(input)
+  session$doBookmark()
+})
+onBookmarked(function(url) {
+  updateQueryString(url)
+})
+```
+
+
+Row {.section-heading data-height=50}
+-------------------------------------
+About Bayesian A/B testing
+
+Row {.tabset .tabset-fade data-height=300}
+-------------------------------------
+### Why Bayesian?
+- False positives (kinda a false promise there)
+- Intuitive language (so much for that)
+- Might have been the path chosen all along were it not for computational limitations prior to *Big Data*
+
+> We're assuming you're more familiar with a Frequentist framework for A/B testing
+
+### Bayes Theorem
+Probability of the model (given the data) = Probability of the data (given the model) X probability of the model all over probability of the data.
+
+>What, that's not super clear to you either?
+
+### How it works
+- Use of Priors
+- Credible intervals
+- Use of linear/logistic regression
+- Use of simulations (MCMC or others)
+- Many different analytical approaches
+- Much complexity and some arbitrariness
+
+### Who's Bayes anyway?
+It all started hundreds of years ago...
+
+Row {.section-heading data-height=50}
+-------------------------------------
+Experiment Context
+
+Row {data-height=350}
+-------------------------------------
+### Historical Traffic Inputs
+
+```{r historical_inputs}
+
+numericInput("prior_traffic", label = h5("Hisotrical traffic"), value = 10000, min = 1)
+numericInput("prior_conversions", label = h5("Historical conversions"), value = 990, min = 1)
+numericInput("prior_days", label = h5("Time period of data (days of traffic)"), value = 14, min = 1)
+
+```
+
+```{r historical_chart_var, include=FALSE}
+
+# Reactive variable for historical conversion data
+global_vars <- reactiveValues(prior_cvr = NULL, theme = NULL, rope = NULL, srm = NULL)
+
+global_vars$theme <- list(
+  theme_light() +
+  theme(legend.position = "none", panel.grid.minor = element_blank())
+)
+
+# Set a delay render around some inputs so that everything doesn't update repeatedly
+delay_historical_inputs <- debounce(reactive({
+  c(
+    input$prior_traffic,
+    input$prior_conversions
+  )
+  }),500)
+
+# When historical traffic inputs change, update the chart
+observeEvent(delay_historical_inputs(), {
+  df <- data.frame(cvr = seq(0,1, length=3000)) %>% 
+    mutate(prob = dbeta(cvr, input$prior_conversions, input$prior_traffic - input$prior_conversions)) %>% 
+    filter(prob > .001)
+  
+  global_vars$prior_cvr <- list(ggplot(df, aes(cvr,prob)) +
+    geom_polygon(alpha = .3) +
+    geom_line() + 
+    scale_x_continuous(labels = scales::percent, n.breaks = 8) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+    geom_vline(xintercept = df$cvr[df$prob==max(df$prob)], linetype = "dashed", size = .25) +
+    global_vars$theme
+    )
+})
+
+delay_rope_inputs <- debounce(reactive({
+  c(
+    input$conversion_value,
+    input$equivalence_range,
+    input$conversion_value,
+    input$prior_days,
+    input$roi
+  )
+}),500)
+
+observeEvent(delay_rope_inputs(), {
+  df <- data.frame(effect = seq(-.2,.3,length=30)) %>% 
+    mutate(return = (effect * input$prior_conversions)/input$prior_days * 28 * input$conversion_value,
+           positive = if_else(effect > 0, TRUE, FALSE))
+  
+  return_threshold <- input$roi / 26 * 4 
+  return_threshold <- df[rev(order(df[,2]<=return_threshold))[1] ,1]
+  
+  global_vars$rope <- list(ggplot(df, aes(effect, abs(return), fill = positive)) +
+      geom_col() +
+      scale_x_continuous(labels = scales::percent, n.breaks = 8) +
+      scale_y_continuous(labels = scales::dollar, n.breaks = 10, expand = expansion(mult = c(0, .1))) +
+      annotate("rect", xmin = min(input$equivalence_range)/100, xmax = max(input$equivalence_range)/100, ymin = 0, ymax = Inf, alpha = .5, fill = "gray") +
+      geom_vline(xintercept = input$equivalence_range/100, linetype = "dashed", size = .25) +
+      geom_vline(xintercept = return_threshold, linetype = "dotted", size = .5) +
+      global_vars$theme
+  )
+})
+
+```
+
+
+### Visualize Historical (Prior)
+
+```{r chart_historicals}
+renderPlot({
+ # Historical conversion rate chart from reactive variable 
+ global_vars$prior_cvr 
+})
+```
+
+
+Row {data-height=350}
+-------------------------------------
+### Conversion Value
+
+```{r value_inputs}
+
+numericInput("conversion_value", label = h5("What's the $ value of one conversion?"), value = 10, min = 0)
+sliderInput("equivalence_range", label = h5("What % change in conversion rate is negligible?"), min = -8, max = 8, value = c(-1.5, 1.5), step = 0.5, post = "%")
+numericInput("roi", label = h5("How much $ does this change need to make you over a 6 month period to justify implementation?"), value = 10000, min = 0)
+
+```
+
+### Region of Practical Equivalence (ROPE)
+
+
+```{r chart_rope}
+
+renderPlot({
+  # ROPE plot from reactive variable
+  global_vars$rope
+  
+})
+```
+
+Row {.section-heading data-height=50}
+-------------------------------------
+Section 2 - Test data
+
+Row {data-height=225}
+-------------------------------------
+### Control
+
+```{r control_inputs}
+
+numericInput("traffic_control", label = h5("Traffic in control group"), value = 10000, min = 1)
+numericInput("conversions_control", label = h5("Conversions in control group"), value = 950, min = 0)
+
+```
+
+### Test
+
+```{r test_inputs}
+
+numericInput("traffic_test", label = h5("Traffic in test group"), value = 10010, min = 1)
+numericInput("conversions_test", label = h5("Conversions in test group"), value = 980, min = 0)
+
+```
+
+### Sample Ratio Mismatch
+```{r srm_check}
+h5("We'll check for sample ratio mismatch using a 99% significance threshold.")
+numericInput("split", label = h5("% of traffic allocated to test variant"), value = 50, min = 1, max = 99)
+```
+
+```{r srm_output}
+renderUI({
+  if (global_vars$srm$test == TRUE) {
+    msg <- paste("Sample Ratio Mismatch (SRM) has been detected.")
+    h4(class="srm_msg", msg)
+  }
+})
+```
+
+
+```{r srm_calc, include=FALSE}
+observeEvent(c(input$traffic_test,input$traffic_control,input$srm, input$split), {
+  req(input$traffic_test > 0)
+  req(input$traffic_control > 0)
+
+  ratio_control <- input$traffic_control / (input$traffic_control + input$traffic_test) * 100
+  ratio_test <- input$traffic_test / (input$traffic_control + input$traffic_test) * 100
+  
+  # Chi Squared Goodness of Fit test
+  expected_split <- c(1-input$split/100,input$split/100)
+  
+  srm_pvalue <- round(chisq.test(c(input$traffic_control,input$traffic_test),p=expected_split)$p.value,4) 
+  srm_test_boolean <- srm_pvalue <= 0.01
+  srm_ratio <- paste0(round(ratio_control,1),"%:",round(ratio_test,1),"%")
+  
+  global_vars$srm <- list("test" = srm_test_boolean, "pval" = srm_pvalue, "ratio" = srm_ratio)
+}, ignoreInit = TRUE)
+```
+
+Row 
+-------------------------------------
+```{r rate_calc, include=FALSE}
+observeEvent(c(input$conversions_control,input$traffic_control,input$conversions_test,input$traffic_test),{
+  global_vars$control <- input$conversions_control/input$traffic_control
+  global_vars$test <- input$conversions_test/input$traffic_test
+  global_vars$difference <- global_vars$test/global_vars$control - 1
+})
+```
+
+### Control conversion rate
+
+```{r}
+renderValueBox({
+  valueBox(paste0(round(global_vars$control*100,2),"%"), icon = "fa-font")
+  
+})
+```
+
+
+### Test conversion rate
+```{r}
+renderValueBox({
+  valueBox(paste0(round(global_vars$test*100,2),"%"), icon = "fa-bold")
+  
+})
+```
+
+### Observed difference
+```{r}
+renderValueBox({
+  valueBox(paste0(round(global_vars$difference*100,2),"%"), icon = "fa-balance-scale",
+           color = if_else(global_vars$difference < 0, "danger", "success"))
+  
+})
+```
+
+### Traffic split
+```{r}
+renderValueBox({
+  valueBox(global_vars$srm$ratio, icon = "fa-adjust",
+           color = if_else(global_vars$srm$test == TRUE, "danger", "primary"))
+  
+})
+```
+
+Row {.section-heading data-height=50}
+-------------------------------------
+Section 3 - posterior distribution
+
+```{r posterior_calc, include=FALSE}
+observeEvent(input$calculate_posterior, {
+  test_data <- data.frame(recipe = c("A","B"), cvr = c(global_vars$control, global_vars$test), traffic = c(input$traffic_control, input$traffic_test))
+
+  # Function to convert logodds to prob https://sebastiansauer.github.io/convert_logit2prob/
+  logit2prob <- function(logit){
+    odds <- exp(logit)
+    prob <- odds / (1 + odds)
+    return(prob)
+  }
+  
+  global_vars$test_model <- stan_glm(cvr ~ recipe, data = test_data, weights = traffic, family = "binomial",
+                    prior = normal(0,.1), # prior of the effect size (main parameter in the posterior)
+                    # setting prior SD to < 1 narrows the prior distribution
+                    # prior_intercept = normal(prior_cvr,prior_se), # prior of the control variant..this isn't right
+                    chains = 2, iter = 1000, warmup = 250)
+  
+  global_vars$posteriors <- insight::get_parameters(global_vars$test_model) %>%
+    rename(logit_a = `(Intercept)`, effect = recipeB) %>% 
+    mutate(A = logit2prob(logit_a),
+           B = logit2prob(logit_a + effect)) 
+  
+  # print(head(global_vars$posteriors))
+
+    
+})
+```
+
+
+Row  {data-height=350}
+-------------------------------------
+### Calculate Posteriors
+Input: use weakest prior
+Output: explain how posteriors are simulated  
+```{r posterior_inputs}
+br()
+actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off", lib = "font-awesome"))
+```
+
+
+### Control & Test Posteriors & Credibility Intervals
+```{r variant_posterior_chart}
+
+renderPlot({
+  req(!is.null(global_vars$posteriors))
+  
+  ci_control <- hdi(global_vars$posteriors$A, ci = .9)
+  ci_test <- hdi(global_vars$posteriors$B, ci = .9)
+  maps = c(map_estimate(global_vars$posteriors$A),map_estimate(global_vars$posteriors$B)) # Maximum A Posteriori probability estimate (MAP)
+  
+  df <- global_vars$posteriors %>%
+    subset(select = c(A,B)) %>%
+    pivot_longer(cols = c(A,B))
+  
+  ci_plot <- ggplot(df, aes(x = value, fill = name)) +
+    geom_density(alpha = 0.5, bw = "SJ", adjust = 3)
+  
+  y_top <- ggplot_build(ci_plot)$layout$panel_scales_y[[1]]$range$range[[2]]
+
+  ci_plot +
+    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+    scale_x_continuous(labels = scales::percent) +
+    geom_vline(xintercept = maps, linetype = "dashed", size = .25) +
+    annotate(geom="pointrange", # adds interval lines
+         x = c(maps),
+         y = c(y_top * .1, y_top * .3),
+         xmin = c(ci_control$CI_low,ci_test$CI_low),
+         xmax = c(ci_control$CI_high,ci_test$CI_high),
+         size = .75,
+         shape = 18) +
+    global_vars$theme
+  
+
+})
+```
+
+
+### Effect Posterior & Credibility Interval
+```{r effect_posterior_chart}
+
+renderPlot({
+  req(!is.null(global_vars$posteriors))
+  
+  ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
+  maps = map_estimate(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
+  
+  
+  ggplot(global_vars$posteriors, aes(x=effect)) +
+    geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+    scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
+    geom_vline(xintercept = maps, linetype = "dashed", size = .25) +
+    #geom_vline(xintercept = c(ci_control$CI_low,ci_control$CI_high), linetype = "dashed", size = .25) +
+    #geom_vline(xintercept = c(ci_test$CI_low,ci_test$CI_high), linetype = "dashed", size = .25) +
+    annotate(geom="pointrange", # adds interval lines
+         x = maps,
+         y = .2,
+         xmin = ci_effect$CI_low,
+         xmax = ci_effect$CI_high,
+         size = .75,
+         shape = 18) +
+    global_vars$theme
+})
+
+```
+
+Row {.section-heading data-height=50}
+-------------------------------------
+Section 4 - analysis & impact
+
+Row 
+-------------------------------------
+### Probabilities
+Probability Test is Better vs Control is Better
+Probability Better than lower ROPE end
+Probability Better than upper ROPE end
+Probability inside ROPE
+Probability Better than ROI threshold 
+
+### Explanations
+Output: explain how probabilities are inferred
+
+### Visualizations
+Output: visualize probabilities of superiority
+
+Row 
+-------------------------------------
+
+```{r pdf_export}
+# EXPORT TO PDF
+# Package from github: remotes::install_github("dreamRs/capture")
+renderUI({
+  div(id="exportpdf",
+    capture::capture_pdf(
+      selector = "body",
+      filename = paste("abTestResults",Sys.time()),
+      icon("download"), "Export to PDF",
+      margin = 2
+    )
+  )
+})
+
+```
