@@ -69,7 +69,7 @@ Row {.section-heading data-height=50}
 -------------------------------------
 About Bayesian A/B testing
 
-Row {.tabset .tabset-fade data-height=300}
+Row {.tabset .tabset-fade data-height=100}
 -------------------------------------
 ### Why Bayesian?
 - False positives (kinda a false promise there)
@@ -104,7 +104,7 @@ Row {data-height=350}
 
 ```{r historical_inputs}
 
-numericInput("prior_traffic", label = h5("Hisotrical traffic"), value = 10000, min = 1)
+numericInput("prior_traffic", label = h5("Historical traffic"), value = 10000, min = 1)
 numericInput("prior_conversions", label = h5("Historical conversions"), value = 990, min = 1)
 numericInput("prior_days", label = h5("Time period of data (days of traffic)"), value = 14, min = 1)
 
@@ -161,6 +161,7 @@ observeEvent(delay_rope_inputs(), {
   
   return_threshold <- input$roi / 26 * 4 
   return_threshold <- df[rev(order(df[,2]<=return_threshold))[1] ,1]
+  global_vars$roi <- return_threshold
   
   global_vars$rope <- list(ggplot(df, aes(effect, abs(return), fill = positive)) +
       geom_col() +
@@ -212,7 +213,7 @@ renderPlot({
 
 Row {.section-heading data-height=50}
 -------------------------------------
-Section 2 - Test data
+Enter Test Data
 
 Row {data-height=225}
 -------------------------------------
@@ -317,7 +318,7 @@ renderValueBox({
 
 Row {.section-heading data-height=50}
 -------------------------------------
-Section 3 - posterior distribution
+Estimate Posterior Distributions
 
 ```{r posterior_calc, include=FALSE}
 observeEvent(input$calculate_posterior, {
@@ -330,19 +331,19 @@ observeEvent(input$calculate_posterior, {
     return(prob)
   }
   
+  # Generate posteriors using bayesian logistic regression
   global_vars$test_model <- stan_glm(cvr ~ recipe, data = test_data, weights = traffic, family = "binomial",
-                    prior = normal(0,.1), # prior of the effect size (main parameter in the posterior)
+                    # prior = normal(0,.1), # prior of the effect size (main parameter in the posterior)
                     # setting prior SD to < 1 narrows the prior distribution
                     # prior_intercept = normal(prior_cvr,prior_se), # prior of the control variant..this isn't right
-                    chains = 2, iter = 1000, warmup = 250)
+                    chains = 4, iter = 4000, warmup = 1000)
   
+  # Translate posteriors from logodds to probabilities
   global_vars$posteriors <- insight::get_parameters(global_vars$test_model) %>%
     rename(logit_a = `(Intercept)`, effect = recipeB) %>% 
     mutate(A = logit2prob(logit_a),
            B = logit2prob(logit_a + effect)) 
   
-  # print(head(global_vars$posteriors))
-
     
 })
 ```
@@ -365,8 +366,8 @@ actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off"
 renderPlot({
   req(!is.null(global_vars$posteriors))
   
-  ci_control <- hdi(global_vars$posteriors$A, ci = .9)
-  ci_test <- hdi(global_vars$posteriors$B, ci = .9)
+  ci_control <- hdi(global_vars$posteriors$A, ci = .95)
+  ci_test <- hdi(global_vars$posteriors$B, ci = .95)
   maps = c(map_estimate(global_vars$posteriors$A),map_estimate(global_vars$posteriors$B)) # Maximum A Posteriori probability estimate (MAP)
   
   df <- global_vars$posteriors %>%
@@ -397,52 +398,134 @@ renderPlot({
 
 
 ### Effect Posterior & Credibility Interval
-```{r effect_posterior_chart}
-
-renderPlot({
+```{r effect_posterior_chart_calc, include=FALSE}
+observeEvent(global_vars$posteriors, {
   req(!is.null(global_vars$posteriors))
   
-  ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
-  maps = map_estimate(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
+  # ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
+  global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
+
+  global_vars$effect_map = map_estimate(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
   
   
-  ggplot(global_vars$posteriors, aes(x=effect)) +
+  global_vars$effect_posterior_chart <- list(ggplot(global_vars$posteriors, aes(x=effect)) +
     geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
     scale_y_continuous(expand = expansion(mult = c(0, .1))) +
     scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
-    geom_vline(xintercept = maps, linetype = "dashed", size = .25) +
+    geom_vline(xintercept = global_vars$effect_map, linetype = "dashed", size = .25) +
     #geom_vline(xintercept = c(ci_control$CI_low,ci_control$CI_high), linetype = "dashed", size = .25) +
     #geom_vline(xintercept = c(ci_test$CI_low,ci_test$CI_high), linetype = "dashed", size = .25) +
     annotate(geom="pointrange", # adds interval lines
-         x = maps,
-         y = .2,
-         xmin = ci_effect$CI_low,
-         xmax = ci_effect$CI_high,
-         size = .75,
-         shape = 18) +
+     x = global_vars$effect_map,
+     y = .2,
+     xmin = global_vars$ci_effect$CI_low,
+     xmax = global_vars$ci_effect$CI_high,
+     size = .75,
+     shape = 18) +
     global_vars$theme
+  )
+})
+```
+
+```{r effect_posterior_chart_display}
+
+renderPlot({
+  req(!is.null(global_vars$effect_posterior_chart))
+
+  global_vars$effect_posterior_chart 
+
 })
 
 ```
 
 Row {.section-heading data-height=50}
 -------------------------------------
-Section 4 - analysis & impact
+Analyze Posteriors
 
-Row 
+Row {data-height=350}
 -------------------------------------
-### Probabilities
-Probability Test is Better vs Control is Better
-Probability Better than lower ROPE end
-Probability Better than upper ROPE end
-Probability inside ROPE
-Probability Better than ROI threshold 
+```{r posterior_analysis, include=FALSE}
+observeEvent(global_vars$posteriors, {
+  global_vars$p_better <- p_direction(global_vars$posteriors$effect) 
+  
+  global_vars$p_null <- p_rope(global_vars$posteriors$effect, range = input$equivalence_range/100)$p_ROPE
+  
+  global_vars$p_significant <- p_significance(global_vars$posteriors$effect, threshold = input$equivalence_range[2]/100)
+  
+  global_vars$p_noninferior <- global_vars$p_significant + global_vars$p_null
+  
+  global_vars$p_roi <- p_significance(global_vars$posteriors$effect, threshold = global_vars$roi)
+  
+  global_vars$color_key <- c("blue","green","red","black") # Order is noninferior, better, significant, roi
+})
+```
 
 ### Explanations
 Output: explain how probabilities are inferred
 
+### Probabilities
+```{r probabilities}
+renderUI({
+  req(!is.null(global_vars$posteriors))
+  
+  div(
+    p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
+    p(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
+    p("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
+    p(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
+    p(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
+  )
+ 
+})
+```
+
 ### Visualizations
-Output: visualize probabilities of superiority
+```{r posterior_analysis_chart}
+
+renderPlot({
+  req(!is.null(global_vars$posteriors))
+  
+  df <- data.frame(
+    x = c(input$equivalence_range[1]/100,0,input$equivalence_range[2]/100,global_vars$roi), # Order is noninferior, better, significant, roi
+    y = c(.6,.45,.3,.15)) %>% 
+    mutate(xend = x + (global_vars$ci_effect$CI_high * 1.5 - global_vars$effect_map),
+           yend = y,
+           color = global_vars$color_key,
+           text = c(
+             paste0("Prob. not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
+             paste0("Prob. better than = ",round(global_vars$p_better*100,1),"%"),
+             paste0("Prob. significant = ",round(global_vars$p_significant*100,1),"%"),
+             paste0("Prob. ROI = ",round(global_vars$p_roi*100,1),"%")
+           ))
+  
+  ggplot(global_vars$posteriors, aes(x=effect)) +
+    geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
+    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+    scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
+    # geom_vline(xintercept = global_vars$effect_map, linetype = "dashed", size = .25) +
+    geom_vline(xintercept = df$x, linetype = "solid", size = .75, color = df$color) +
+    geom_segment(data = df, aes(x = x, y = y, xend = xend, yend = yend),
+      lineend = "round", 
+      linejoin = "round",
+      size = .75, 
+      arrow = arrow(length = unit(0.075, "inches")),
+      color = df$color 
+    ) + 
+    geom_text(data = df, aes(x = x, y = y, label = text),
+      nudge_y = (.03),
+      hjust = -0.05,
+      size = 3,
+      color = df$color) +
+    annotate("rect", 
+             xmin = min(input$equivalence_range)/100, 
+             xmax = max(input$equivalence_range)/100, 
+             ymin = 0, ymax = Inf, 
+             alpha = .5, fill = "gray") +
+    global_vars$theme
+
+})
+
+```
 
 Row 
 -------------------------------------
@@ -462,3 +545,8 @@ renderUI({
 })
 
 ```
+
+Row {data-height=50}
+-----------------------------------------------------------------------
+version 2.0  
+To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.
