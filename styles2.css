@@ -7,7 +7,7 @@ body {
 }
 
 /* Set the main body/text font */
-p, a, body {
+p, body {
     font-family: "Lato", helvetica,arial,sans-serf;
     font-size: 1.1em;
     margin: 5px 0 5px 0;

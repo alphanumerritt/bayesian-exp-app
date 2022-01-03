@@ -23,7 +23,7 @@ library(rstanarm)
 library(bayestestR)
 library(dplyr)
 library(tidyr)
-library(insight)
+# library(insight)
 library(ggplot2)
 library(see)
 library(flexdashboard)
@@ -72,18 +72,18 @@ About Bayesian A/B testing
 Row {.tabset .tabset-fade data-height=300}
 -------------------------------------
 ### Why Bayesian?
-<strong>People like to say that Bayesian is immune to peeking problems</strong>  
+**People like to say that Bayesian is immune to peeking problems**  
 That's a bit of a false promise. [This article](http://varianceexplained.org/r/bayesian-ab-testing/){target="_blank} does a pretty great job of illustrating why.
 
-<strong>People say that Bayesian is more simple or more intuitive</strong>  
-Simple is a <strong>definite no</strong> except in the sense that Bayesian outcomes may be stated very simply in terms of a probability that B is better than A versus the more esoteric frequentist outcome statement "the difference is statistically significant".  
+**People say that Bayesian is more simple or more intuitive**  
+Simple is a *definite no*, except in the sense that Bayesian outcomes may be stated very simply in terms of a probability that B is better than A versus the more esoteric frequentist outcome statement "the difference is statistically significant".  
 
-The truth is that Bayesian testing involves a great deal more complexity including some tricky concepts like "priors" and "posteriors", simulations of outcomes, and a huge range of approaches when interpreting the outcomes such as [loss functions](https://www.chrisstucchio.com/blog/2014/bayesian_ab_decision_rule.html){target="_blank"}, [Bayes factors and support intervals](https://easystats.github.io/bayestestR/articles/bayes_factors.html){target="_blank"} to name a few. Embedded at each step are significant (and sometimes arbitrary) methodology choices that impact outcomes. If a staff statistician is recommended for teams wishing to conducting frequentist a/b testing, it's a must for those wishing to use Bayesian frameworks.
+The truth is that Bayesian testing usually involves a great deal more complexity including some tricky concepts like "priors" and "posteriors", simulations of outcomes, and a huge range of approaches when interpreting the outcomes such as [loss functions](https://www.chrisstucchio.com/blog/2014/bayesian_ab_decision_rule.html){target="_blank"}, [Bayes factors and support intervals](https://easystats.github.io/bayestestR/articles/bayes_factors.html){target="_blank"} to name a few. Embedded at each step are significant (and sometimes arbitrary) methodology choices that impact outcomes. If a staff statistician is recommended for teams wishing to conduct frequentist a/b testing, it's a *must* for those wishing to use Bayesian frameworks.
 
-<strong>People say Bayesian would be more common if computation had be been easier way-back-when</strong>  
+**People say Bayesian would be more common if computation had be been easier way-back-when**  
 This could be true. If it had been easier to run thousands of mathematical simulations back in the 1700's, it's possible that no one would have even bothered to develop frequentist methods. But it wasn't and they did, and as a result legions of hacks have been able to use statistics with relative ease, albeit often incorrectly.
 
-<strong>So...why?</strong>  
+**So...why?**  
 Because everyone keeps talking about Bayesian testing. Plus it's interesting, useful and we love to support the learning process!
 
 > If it wasn't obvious, we're assuming you're more familiar with a Frequentist framework for A/B testing
@@ -92,14 +92,18 @@ Because everyone keeps talking about Bayesian testing. Plus it's interesting, us
 [Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem){target="_blank"} (a.k.a. Bayes' law and Bayes' rule) describes the probability of an event, based on prior knowledge of conditions that might be related to the event.  
 
 ![Bayes' Theorem. Source: By mattbuck (category) - Own work by mattbuck., CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=14658489](https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Bayes%27_Theorem_MMB_01.jpg/1920px-Bayes%27_Theorem_MMB_01.jpg){width=25%}  
-We read this as, "The probability of A (given B) equals the probability of B (given A) times the probability of A divided by the probability of B."  
+We read this cute sign as, "The probability of A (given B) equals the probability of B (given A) times the probability of A divided by the probability of B." Bayesian analysis always starts with this theorem.
 
 Translate this to an A/B test where our hypothesis is that the effect of B is greater than 0 (B > A). It would read, "the probability of a positive effect (given our test data) equals the probability of our test data (given B > A) times the probability of there being an effect divided by the probability of our test data.
 
->What, that's not, like, super clear to you either?
-
 ### How it works
-- Use of Priors
+We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app
+1. Define priors
+2. Assemble test data
+3. Define a model
+3. Simulate posteriors
+4. Analyze posteriors
+- Use of Priors [illustrates how priors are combined with observed data](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"}
 - Credible intervals
 - Use of linear/logistic regression
 - Use of simulations (MCMC or others)
@@ -174,49 +178,7 @@ observeEvent(delay_historical_inputs(), {
     )
 })
 
-delay_rope_inputs <- debounce(reactive({
-  c(
-    input$conversion_value,
-    input$equivalence_range,
-    input$conversion_value,
-    input$prior_days,
-    input$roi
-  )
-}),500)
 
-observeEvent(delay_rope_inputs(), {
-  df <- data.frame(effect = seq(-.2,.3,length=30)) %>% 
-    mutate(return = (effect * input$prior_conversions)/input$prior_days * 28 * input$conversion_value,
-           positive = if_else(effect > 0, TRUE, FALSE))
-  
-  return_threshold <- input$roi / 26 * 4 
-  return_threshold <- df[rev(order(df[,2]<=return_threshold))[1] ,1]
-  global_vars$roi <- return_threshold
-  
-  global_vars$rope <- list(ggplot(df, aes(effect, abs(return), fill = positive)) +
-      geom_col(alpha = .5) +
-      scale_x_continuous(labels = scales::percent, n.breaks = 8) +
-      scale_y_continuous(labels = scales::dollar, n.breaks = 10, expand = expansion(mult = c(0, .1))) +
-      annotate("rect", xmin = min(input$equivalence_range)/100, xmax = max(input$equivalence_range)/100, ymin = 0, ymax = Inf, alpha = .5, fill = "gray") +
-      geom_vline(xintercept = input$equivalence_range/100, linetype = "dashed", size = .25) +
-      geom_vline(xintercept = return_threshold, linetype = "dotted", size = .5) +
-      labs(x = "Possible difference in conversion rate (B/A-1)",
-         y = "Revenue Increase/Decrease In 4 Week Period") +
-      annotate(geom = "text",
-               x = mean(input$equivalence_range),
-               y = max(df$return)/2,
-               label = "Region of Practical Equivalence (ROPE)",
-               angle = 90,
-               size = 4) +
-        annotate(geom = "text",
-               x = return_threshold + .01,
-               y = max(df$return)/2,
-               label = paste0(round(return_threshold*100,2),"% required for desired ROI"),
-               angle = 90,
-               size = 4) +
-      global_vars$theme
-  )
-})
 
 ```
 
@@ -241,6 +203,53 @@ numericInput("conversion_value", label = h5("What's the $ value of one conversio
 sliderInput("equivalence_range", label = h5("What % change in conversion rate is negligible?"), min = -8, max = 8, value = c(-1.5, 1.5), step = 0.5, post = "%")
 numericInput("roi", label = h5("How much $ does this change need to make you over a 6 month period to justify implementation?"), value = 10000, min = 0)
 
+```
+
+```{r rope_chart_var, include=FALSE}
+delay_rope_inputs <- debounce(reactive({
+  c(
+    input$conversion_value,
+    input$equivalence_range,
+    input$prior_conversions,
+    input$prior_days,
+    input$roi
+  )
+}),500)
+
+observeEvent(delay_rope_inputs(), {
+  df <- data.frame(effect = seq(-.2,.3,length=50)) %>% 
+    mutate(return = (effect * input$prior_conversions)/input$prior_days * 28 * input$conversion_value,
+           positive = if_else(effect > 0, TRUE, FALSE))
+  
+  #return_threshold <- input$roi / 26 * 4 
+  #return_threshold <- df[rev(order(df[,2]<=return_threshold))[1] ,1]
+  return_threshold <- (input$roi / input$conversion_value)/(input$prior_conversions/input$prior_days*7*26)
+  global_vars$roi <- return_threshold
+  
+  global_vars$rope <- list(ggplot(df, aes(effect, abs(return), fill = positive)) +
+      geom_col(alpha = .5) +
+      scale_x_continuous(labels = scales::percent, n.breaks = 8) +
+      scale_y_continuous(labels = scales::dollar, n.breaks = 10, expand = expansion(mult = c(0, .1))) +
+      annotate("rect", xmin = min(input$equivalence_range)/100, xmax = max(input$equivalence_range)/100, ymin = 0, ymax = Inf, alpha = .5, fill = "gray") +
+      geom_vline(xintercept = input$equivalence_range/100, linetype = "dashed", size = .25) +
+      geom_vline(xintercept = return_threshold, linetype = "dotted", size = .5) +
+      labs(x = "Possible difference in conversion rate (B/A-1)",
+         y = "Revenue Increase/Decrease In 4 Week Period") +
+      annotate(geom = "text",
+               x = mean(input$equivalence_range/100),
+               y = max(df$return)/2,
+               label = "Region of Practical Equivalence (ROPE)",
+               angle = 90,
+               size = 4) +
+        annotate(geom = "text",
+               x = return_threshold + .01,
+               y = max(df$return)/2,
+               label = paste0(round(return_threshold*100,2),"% required for desired ROI"),
+               angle = 90,
+               size = 4) +
+      global_vars$theme
+  )
+})
 ```
 
 ### Region of Practical Equivalence (ROPE)
@@ -377,14 +386,14 @@ observeEvent(input$calculate_posterior, {
   
   # Generate posteriors using bayesian logistic regression
   global_vars$test_model <- stan_glm(cvr ~ recipe, data = test_data, weights = traffic, family = "binomial",
-                    # prior = normal(0,.1), # prior of the effect size (main parameter in the posterior)
+                    prior = normal(0,1), # prior of the effect size (main parameter in the posterior)
                     # setting prior SD to < 1 narrows the prior distribution
-                    # prior_intercept = normal(prior_cvr,prior_se), # prior of the control variant..this isn't right
-                    chains = 4, iter = 2000, warmup = 1000)
+                    prior_intercept = normal(0,1), # prior of the control variant, (weak prior)
+                    chains = 5, iter = 11000, warmup = 1000)
   
   
   # Translate posteriors from logodds to probabilities
-  global_vars$posteriors <- insight::get_parameters(global_vars$test_model) %>%
+  global_vars$posteriors <- as.data.frame(global_vars$test_model) %>%
     rename(logit_a = `(Intercept)`, effect_lo = recipeB) %>% 
     mutate(A = logit2prob(logit_a),
            B = logit2prob(logit_a + effect_lo)) %>% 
@@ -404,7 +413,7 @@ observeEvent(global_vars$theme,{
   global_vars$dummy_chart <- list(ggplot(dummy_df, aes(cvr,prob)) +
         geom_polygon(fill = "gray70") +
         geom_line(alpha = .7) +
-        annotate(geom = "text", x = .5, y = 5, label = "Placeholder", angle = 45, size = 10, alpha = .7) +
+        annotate(geom = "text", x = .5, y = 5, label = "Placeholder for \n posteriors analysis", angle = 45, size = 10, alpha = .7) +
         theme_minimal() +
         theme(axis.title.y = element_blank(), axis.title.x = element_blank(), plot.background = element_rect(fill = "grey70"), axis.text = element_text(color = "grey50"), panel.grid.minor = element_blank()) 
   )
@@ -433,6 +442,7 @@ renderPlot({
 
   if (!is.null(global_vars$posteriors)) {
     ci_control <- hdi(global_vars$posteriors$A, ci = .95)
+    print(ci_control)
     ci_test <- hdi(global_vars$posteriors$B, ci = .95)
     medians = c(median(global_vars$posteriors$A),median(global_vars$posteriors$B)) 
     
@@ -444,19 +454,37 @@ renderPlot({
       geom_density(alpha = 0.5, bw = "SJ", adjust = 3)
     
     y_top <- ggplot_build(ci_plot)$layout$panel_scales_y[[1]]$range$range[[2]]
-  
+
     ci_plot +
       scale_y_continuous(expand = expansion(mult = c(0, .1))) +
       scale_x_continuous(labels = scales::percent) +
       geom_vline(xintercept = medians, linetype = "dashed", size = .25) +
+      annotate(geom="text",
+               x = medians,
+               y = c(y_top * 1.05, y_top * 1.02),
+               label = c("Control","Test"),
+               size = 4) +
       annotate(geom="pointrange", # adds interval lines
-           x = c(medians),
+           x = medians,
            y = c(y_top * .1, y_top * .3),
            xmin = c(ci_control$CI_low,ci_test$CI_low),
            xmax = c(ci_control$CI_high,ci_test$CI_high),
            size = .75,
            shape = 18) +
-      global_vars$theme
+      annotate(geom="text",
+               x = medians,
+               y = c(y_top * .15, y_top * .35),
+               label = paste0(round(medians*100,2),"%"),
+               size = 4) +
+      annotate(geom="text",
+               x = c(ci_control$CI_low,ci_control$CI_high,ci_test$CI_low,ci_test$CI_high),
+               y = c(rep(y_top * .15,2), rep(y_top * .35,2)),
+               label = paste0(round(c(ci_control$CI_low,ci_control$CI_high,ci_test$CI_low,ci_test$CI_high)*100,2),"%"),
+               size = 4) +
+      labs(x = paste0("Possible conversion rate"),
+           y = "Likelihood") +
+      global_vars$theme +
+      theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(), axis.ticks.y = element_blank())
     
   } else {
     global_vars$dummy_chart
@@ -474,8 +502,9 @@ observeEvent(global_vars$posteriors, {
   
   # ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
   global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
-
-  global_vars$effect_median = median(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
+  print(global_vars$ci_effect)
+  
+  global_vars$effect_median = median(global_vars$posteriors$effect) 
   
   
   global_vars$effect_posterior_chart <- list(ggplot(global_vars$posteriors, aes(x=effect)) +
@@ -492,7 +521,20 @@ observeEvent(global_vars$posteriors, {
      xmax = global_vars$ci_effect$CI_high,
      size = .75,
      shape = 18) +
-    global_vars$theme
+    annotate(geom="text",
+             x = global_vars$effect_median,
+             y = .25,
+             label = paste0(round(global_vars$effect_median*100,2),"%"),
+             size = 4) +
+    annotate(geom="text",
+             x = c(global_vars$ci_effect$CI_low,global_vars$ci_effect$CI_high),
+             y = .25,
+             label = paste0(round(c(global_vars$ci_effect$CI_low,global_vars$ci_effect$CI_high)*100,2),"%"),
+             size = 4) +
+    labs(x = paste0("Possible difference in conversion rate (B/A-1)"),
+           y = "Likelihood") +
+    global_vars$theme +
+    theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(), axis.ticks.y = element_blank())
   )
 })
 ```
@@ -528,7 +570,16 @@ observeEvent(global_vars$posteriors, {
   
   global_vars$p_roi <- p_significance(global_vars$posteriors$effect, threshold = global_vars$roi)
   
-  global_vars$color_key <- c("blue","green","red","black") # Order is noninferior, better, significant, roi
+  global_vars$color_key <- c("#515151","#E45C00","#004E54","#00747F") # Order is noninferior, better, significant, roi
+  # SDI colors are
+  # Light Orange: F58220
+  # Orange:FF6D00
+  # Dark Orange: E45C00
+  # Light Teal: 00A2B1
+  # Teal: 00747F
+  # Dark Teal: 004E54
+  # Dark Gray: 515151
+  # Light Gray: 9A9896
 })
 ```
 
@@ -541,9 +592,9 @@ renderUI({
   if (!is.null(global_vars$posteriors)) {
   
     div(
-      p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
       p(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
       p("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
+      p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
       p(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
       p(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
     )
@@ -567,10 +618,10 @@ renderPlot({
              yend = y,
              color = global_vars$color_key,
              text = c(
-               paste0("Prob. not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
-               paste0("Prob. better than = ",round(global_vars$p_better*100,1),"%"),
-               paste0("Prob. significant = ",round(global_vars$p_significant*100,1),"%"),
-               paste0("Prob. ROI = ",round(global_vars$p_roi*100,1),"%")
+               paste0("Not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
+               paste0("Better than = ",round(global_vars$p_better*100,1),"%"),
+               paste0("Significant = ",round(global_vars$p_significant*100,1),"%"),
+               paste0("ROI = ",round(global_vars$p_roi*100,1),"%")
              ))
     
     ggplot(global_vars$posteriors, aes(x=effect)) +
@@ -589,14 +640,24 @@ renderPlot({
       geom_text(data = df, aes(x = x, y = y, label = text),
         nudge_y = 0.03,
         hjust = -0.05,
-        size = 3,
+        size = 4,
         color = df$color) +
       annotate("rect", 
                xmin = min(input$equivalence_range)/100, 
                xmax = max(input$equivalence_range)/100, 
                ymin = 0, ymax = Inf, 
                alpha = .5, fill = "gray") +
-      global_vars$theme
+      annotate(geom = "text",
+               x = mean(input$equivalence_range),
+               y = .01,
+               label = paste0("Negligible = ",round(global_vars$p_null*100,1),"%"),
+               angle = 90,
+               hjust = "inward",
+               size = 4) +
+      labs(x = paste0("Possible difference in conversion rate (B/A-1)"),
+           y = "Likelihood") +
+      global_vars$theme +
+      theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(), axis.ticks.y = element_blank())
   } else {
     global_vars$dummy_chart
   }
