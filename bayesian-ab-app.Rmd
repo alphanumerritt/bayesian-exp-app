@@ -97,19 +97,20 @@ We read this cute sign as, "The probability of A (given B) equals the probabilit
 Translate this to an A/B test where our hypothesis is that the effect of B is greater than 0 (B > A). It would read, "the probability of a positive effect (given our test data) equals the probability of our test data (given B > A) times the probability of there being an effect divided by the probability of our test data.
 
 ### How it works
-We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app
-1. Define priors
-2. Assemble test data
-3. Define a model
-3. Simulate posteriors
-4. Analyze posteriors
-- Use of Priors [illustrates how priors are combined with observed data](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"}
-- Credible intervals
-- Use of linear/logistic regression
-- Use of simulations (MCMC or others)
-- Many different analytical approaches
-- Much complexity and some arbitrariness
-- No expected loss???
+We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app uses the R package `stanarm` to create a logistic regression model which is used to produce posterior distributions from Monte Carlo Markov Chain (MCMC) simulations. While we can't hope to do justice to a full explanation of the methods, we can offer some brief orientation and send you off to some excellent resources for further reading.  
+
+**Priors** - We use a normal distribution with mean 0 and standard deviation 1 to define priors for both the baseline conversion rate (Intercept in the regression model) and the effect (recipeB in the model) as suggested by `stanarm` [here](https://mc-stan.org/rstanarm/articles/binomial.html#priors){target="_blank"}. This is a fairly weak prior, meaning it won't do too much to influence outcomes. It tells the model we generally expect no effect from the test treatment. Priors define the "probability of there being an effect" portion of the theorem. It can be difficult to conceptualize how priors are used. [This article](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"} provides a nice, simple-ish illustration of it. 
+
+**Using Regression for A/B testing?** - Yep. Seems weird, huh? We took cues from [here](https://easystats.github.io/bayestestR/articles/bayestestR.html){target="_blank"} and [here](https://www.countbayesie.com/blog/2019/6/12/logistic-regression-from-bayes-theorem){target="_blank"} and [here](https://towardsdatascience.com/embracing-bayesian-a-b-test-measurement-and-ditching-p-values-9e444df379ca){target="_blank"}.
+
+
+**MCMC** - Use of simulations (MCMC or others)
+
+**Posteriors** - 
+
+**Credible intervals vs Confidence intervals** - Hopefully no one takes too much issue with us saying they are similar but different. We'll let other people do the [explaining here](https://easystats.github.io/bayestestR/articles/credible_interval.html).
+
+**No expected loss?** - [Many](https://www.chrisstucchio.com/blog/2014/bayesian_ab_decision_rule.html){target="_blank"} [A/B](https://towardsdatascience.com/exploring-bayesian-a-b-testing-with-simulations-7500b4fc55bc){target="_blank"} [testers](https://cran.r-project.org/web/packages/bayesAB/vignettes/introduction.html){target="_blank"} embracing Bayesian testing and are talking all about "Expected Loss", even using it as their primary basis for decision making. While we don't challenge the rationality of doing so, we think it's a difficult concept to understand and embrace, which counters one of the key reasons cited for going Bayesian in the first place (explainability). So we're not going there.
 
 ### Who's Bayes anyway?
 [Thomas Bayes](https://en.wikipedia.org/wiki/Thomas_Bayes){target="_blank"} worked out the basics of the methods back in the 1750's, but his work was published posthumously in 1763.  
@@ -441,9 +442,9 @@ actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off"
 renderPlot({
 
   if (!is.null(global_vars$posteriors)) {
-    ci_control <- hdi(global_vars$posteriors$A, ci = .95)
+    ci_control <- ci(global_vars$posteriors$A, ci = .95)
     print(ci_control)
-    ci_test <- hdi(global_vars$posteriors$B, ci = .95)
+    ci_test <- ci(global_vars$posteriors$B, ci = .95)
     medians = c(median(global_vars$posteriors$A),median(global_vars$posteriors$B)) 
     
     df <- global_vars$posteriors %>%
@@ -500,7 +501,7 @@ renderPlot({
 observeEvent(global_vars$posteriors, {
   req(!is.null(global_vars$posteriors))
   
-  # ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
+  # ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
   global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
   print(global_vars$ci_effect)
   
@@ -646,7 +647,7 @@ renderPlot({
                xmin = min(input$equivalence_range)/100, 
                xmax = max(input$equivalence_range)/100, 
                ymin = 0, ymax = Inf, 
-               alpha = .5, fill = "gray") +
+               alpha = .3, fill = "gray") +
       annotate(geom = "text",
                x = mean(input$equivalence_range),
                y = .01,
