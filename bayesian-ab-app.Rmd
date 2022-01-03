@@ -69,19 +69,34 @@ Row {.section-heading data-height=50}
 -------------------------------------
 About Bayesian A/B testing
 
-Row {.tabset .tabset-fade data-height=100}
+Row {.tabset .tabset-fade data-height=300}
 -------------------------------------
 ### Why Bayesian?
-- False positives (kinda a false promise there)
-- Intuitive language (so much for that)
-- Might have been the path chosen all along were it not for computational limitations prior to *Big Data*
+<strong>People like to say that Bayesian is immune to peeking problems</strong>  
+That's a bit of a false promise. [This article](http://varianceexplained.org/r/bayesian-ab-testing/){target="_blank} does a pretty great job of illustrating why.
 
-> We're assuming you're more familiar with a Frequentist framework for A/B testing
+<strong>People say that Bayesian is more simple or more intuitive</strong>  
+Simple is a <strong>definite no</strong> except in the sense that Bayesian outcomes may be stated very simply in terms of a probability that B is better than A versus the more esoteric frequentist outcome statement "the difference is statistically significant".  
 
-### Bayes Theorem
-Probability of the model (given the data) = Probability of the data (given the model) X probability of the model all over probability of the data.
+The truth is that Bayesian testing involves a great deal more complexity including some tricky concepts like "priors" and "posteriors", simulations of outcomes, and a huge range of approaches when interpreting the outcomes such as [loss functions](https://www.chrisstucchio.com/blog/2014/bayesian_ab_decision_rule.html){target="_blank"}, [Bayes factors and support intervals](https://easystats.github.io/bayestestR/articles/bayes_factors.html){target="_blank"} to name a few. Embedded at each step are significant (and sometimes arbitrary) methodology choices that impact outcomes. If a staff statistician is recommended for teams wishing to conducting frequentist a/b testing, it's a must for those wishing to use Bayesian frameworks.
 
->What, that's not super clear to you either?
+<strong>People say Bayesian would be more common if computation had be been easier way-back-when</strong>  
+This could be true. If it had been easier to run thousands of mathematical simulations back in the 1700's, it's possible that no one would have even bothered to develop frequentist methods. But it wasn't and they did, and as a result legions of hacks have been able to use statistics with relative ease, albeit often incorrectly.
+
+<strong>So...why?</strong>  
+Because everyone keeps talking about Bayesian testing. Plus it's interesting, useful and we love to support the learning process!
+
+> If it wasn't obvious, we're assuming you're more familiar with a Frequentist framework for A/B testing
+
+### Bayes' Theorem
+[Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem){target="_blank"} (a.k.a. Bayes' law and Bayes' rule) describes the probability of an event, based on prior knowledge of conditions that might be related to the event.  
+
+![Bayes' Theorem. Source: By mattbuck (category) - Own work by mattbuck., CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=14658489](https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Bayes%27_Theorem_MMB_01.jpg/1920px-Bayes%27_Theorem_MMB_01.jpg){width=25%}  
+We read this as, "The probability of A (given B) equals the probability of B (given A) times the probability of A divided by the probability of B."  
+
+Translate this to an A/B test where our hypothesis is that the effect of B is greater than 0 (B > A). It would read, "the probability of a positive effect (given our test data) equals the probability of our test data (given B > A) times the probability of there being an effect divided by the probability of our test data.
+
+>What, that's not, like, super clear to you either?
 
 ### How it works
 - Use of Priors
@@ -90,9 +105,13 @@ Probability of the model (given the data) = Probability of the data (given the m
 - Use of simulations (MCMC or others)
 - Many different analytical approaches
 - Much complexity and some arbitrariness
+- No expected loss???
 
 ### Who's Bayes anyway?
-It all started hundreds of years ago...
+[Thomas Bayes](https://en.wikipedia.org/wiki/Thomas_Bayes){target="_blank"} worked out the basics of the methods back in the 1750's, but his work was published posthumously in 1763.  
+
+Remarkably, [Pierre-Simon Laplace](https://en.wikipedia.org/wiki/Pierre-Simon_Laplace){target="_blank"} independently stumbled on the same methods in 1774 and took them a lot further, providing the real foundation for the family of approaches we know today. Enjoy this pic of Laplace from his Wikipedia page:  
+![Pierre-Simon Laplace](https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Laplace%2C_Pierre-Simon%2C_marquis_de.jpg/225px-Laplace%2C_Pierre-Simon%2C_marquis_de.jpg){height=200}
 
 Row {.section-heading data-height=50}
 -------------------------------------
@@ -124,23 +143,34 @@ global_vars$theme <- list(
 delay_historical_inputs <- debounce(reactive({
   c(
     input$prior_traffic,
-    input$prior_conversions
+    input$prior_conversions,
+    input$prior_days
   )
   }),500)
 
 # When historical traffic inputs change, update the chart
 observeEvent(delay_historical_inputs(), {
-  df <- data.frame(cvr = seq(0,1, length=3000)) %>% 
+  df <- data.frame(cvr = seq(0,1, length=10000)) %>% 
     mutate(prob = dbeta(cvr, input$prior_conversions, input$prior_traffic - input$prior_conversions)) %>% 
-    filter(prob > .001)
+    filter(prob > 0.001)
   
   global_vars$prior_cvr <- list(ggplot(df, aes(cvr,prob)) +
-    geom_polygon(alpha = .3) +
-    geom_line() + 
-    scale_x_continuous(labels = scales::percent, n.breaks = 8) +
-    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
-    geom_vline(xintercept = df$cvr[df$prob==max(df$prob)], linetype = "dashed", size = .25) +
-    global_vars$theme
+      geom_polygon(alpha = .5, fill = "gray") +
+      geom_line() + 
+      scale_x_continuous(labels = scales::percent, n.breaks = 8) +
+      scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+      # geom_vline(xintercept = df$cvr[df$prob==max(df$prob)], linetype = "dashed", size = .25) +
+      geom_vline(xintercept = input$prior_conversions/input$prior_traffic, linetype = "dashed", size = .25) +
+      labs(x = paste0("Expected conversion rate in ",input$prior_days," day period"),
+           y = "Likelihood") +
+      annotate(geom = "text",
+               x = input$prior_conversions/input$prior_traffic,
+               y = input$prior_traffic/150,
+               label = paste0(round(input$prior_conversions/input$prior_traffic*100,2),"%"),
+               angle = 90,
+               size = 4) +
+      global_vars$theme +
+      theme(axis.text.y = element_blank(), panel.grid.major.y = element_blank(), axis.ticks.y = element_blank())
     )
 })
 
@@ -164,12 +194,26 @@ observeEvent(delay_rope_inputs(), {
   global_vars$roi <- return_threshold
   
   global_vars$rope <- list(ggplot(df, aes(effect, abs(return), fill = positive)) +
-      geom_col() +
+      geom_col(alpha = .5) +
       scale_x_continuous(labels = scales::percent, n.breaks = 8) +
       scale_y_continuous(labels = scales::dollar, n.breaks = 10, expand = expansion(mult = c(0, .1))) +
       annotate("rect", xmin = min(input$equivalence_range)/100, xmax = max(input$equivalence_range)/100, ymin = 0, ymax = Inf, alpha = .5, fill = "gray") +
       geom_vline(xintercept = input$equivalence_range/100, linetype = "dashed", size = .25) +
       geom_vline(xintercept = return_threshold, linetype = "dotted", size = .5) +
+      labs(x = "Possible difference in conversion rate (B/A-1)",
+         y = "Revenue Increase/Decrease In 4 Week Period") +
+      annotate(geom = "text",
+               x = mean(input$equivalence_range),
+               y = max(df$return)/2,
+               label = "Region of Practical Equivalence (ROPE)",
+               angle = 90,
+               size = 4) +
+        annotate(geom = "text",
+               x = return_threshold + .01,
+               y = max(df$return)/2,
+               label = paste0(round(return_threshold*100,2),"% required for desired ROI"),
+               angle = 90,
+               size = 4) +
       global_vars$theme
   )
 })
@@ -336,17 +380,39 @@ observeEvent(input$calculate_posterior, {
                     # prior = normal(0,.1), # prior of the effect size (main parameter in the posterior)
                     # setting prior SD to < 1 narrows the prior distribution
                     # prior_intercept = normal(prior_cvr,prior_se), # prior of the control variant..this isn't right
-                    chains = 4, iter = 4000, warmup = 1000)
+                    chains = 4, iter = 2000, warmup = 1000)
+  
   
   # Translate posteriors from logodds to probabilities
   global_vars$posteriors <- insight::get_parameters(global_vars$test_model) %>%
-    rename(logit_a = `(Intercept)`, effect = recipeB) %>% 
+    rename(logit_a = `(Intercept)`, effect_lo = recipeB) %>% 
     mutate(A = logit2prob(logit_a),
-           B = logit2prob(logit_a + effect)) 
+           B = logit2prob(logit_a + effect_lo)) %>% 
+    mutate(effect = B/A-1)
   
     
 })
 ```
+
+```{r placeholder_chart, include=FALSE}
+
+observeEvent(global_vars$theme,{
+  dummy_df <- data.frame(cvr = seq(0,1, length=100)) %>% 
+      mutate(prob = dbeta(cvr, 5, 45)) #%>% 
+      #filter(prob > .001)
+  
+  global_vars$dummy_chart <- list(ggplot(dummy_df, aes(cvr,prob)) +
+        geom_polygon(fill = "gray70") +
+        geom_line(alpha = .7) +
+        annotate(geom = "text", x = .5, y = 5, label = "Placeholder", angle = 45, size = 10, alpha = .7) +
+        theme_minimal() +
+        theme(axis.title.y = element_blank(), axis.title.x = element_blank(), plot.background = element_rect(fill = "grey70"), axis.text = element_text(color = "grey50"), panel.grid.minor = element_blank()) 
+  )
+  
+})
+
+```
+
 
 
 Row  {data-height=350}
@@ -360,44 +426,48 @@ actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off"
 ```
 
 
-### Control & Test Posteriors & Credibility Intervals
+### Control & Test Posteriors 
 ```{r variant_posterior_chart}
 
 renderPlot({
-  req(!is.null(global_vars$posteriors))
-  
-  ci_control <- hdi(global_vars$posteriors$A, ci = .95)
-  ci_test <- hdi(global_vars$posteriors$B, ci = .95)
-  maps = c(map_estimate(global_vars$posteriors$A),map_estimate(global_vars$posteriors$B)) # Maximum A Posteriori probability estimate (MAP)
-  
-  df <- global_vars$posteriors %>%
-    subset(select = c(A,B)) %>%
-    pivot_longer(cols = c(A,B))
-  
-  ci_plot <- ggplot(df, aes(x = value, fill = name)) +
-    geom_density(alpha = 0.5, bw = "SJ", adjust = 3)
-  
-  y_top <- ggplot_build(ci_plot)$layout$panel_scales_y[[1]]$range$range[[2]]
 
-  ci_plot +
-    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
-    scale_x_continuous(labels = scales::percent) +
-    geom_vline(xintercept = maps, linetype = "dashed", size = .25) +
-    annotate(geom="pointrange", # adds interval lines
-         x = c(maps),
-         y = c(y_top * .1, y_top * .3),
-         xmin = c(ci_control$CI_low,ci_test$CI_low),
-         xmax = c(ci_control$CI_high,ci_test$CI_high),
-         size = .75,
-         shape = 18) +
-    global_vars$theme
+  if (!is.null(global_vars$posteriors)) {
+    ci_control <- hdi(global_vars$posteriors$A, ci = .95)
+    ci_test <- hdi(global_vars$posteriors$B, ci = .95)
+    medians = c(median(global_vars$posteriors$A),median(global_vars$posteriors$B)) 
+    
+    df <- global_vars$posteriors %>%
+      subset(select = c(A,B)) %>%
+      pivot_longer(cols = c(A,B))
+    
+    ci_plot <- ggplot(df, aes(x = value, fill = name)) +
+      geom_density(alpha = 0.5, bw = "SJ", adjust = 3)
+    
+    y_top <- ggplot_build(ci_plot)$layout$panel_scales_y[[1]]$range$range[[2]]
+  
+    ci_plot +
+      scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+      scale_x_continuous(labels = scales::percent) +
+      geom_vline(xintercept = medians, linetype = "dashed", size = .25) +
+      annotate(geom="pointrange", # adds interval lines
+           x = c(medians),
+           y = c(y_top * .1, y_top * .3),
+           xmin = c(ci_control$CI_low,ci_test$CI_low),
+           xmax = c(ci_control$CI_high,ci_test$CI_high),
+           size = .75,
+           shape = 18) +
+      global_vars$theme
+    
+  } else {
+    global_vars$dummy_chart
+  }
   
 
 })
 ```
 
 
-### Effect Posterior & Credibility Interval
+### Effect Posterior 
 ```{r effect_posterior_chart_calc, include=FALSE}
 observeEvent(global_vars$posteriors, {
   req(!is.null(global_vars$posteriors))
@@ -405,18 +475,18 @@ observeEvent(global_vars$posteriors, {
   # ci_effect <- hdi(global_vars$posteriors$effect, ci = .95)
   global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
 
-  global_vars$effect_map = map_estimate(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
+  global_vars$effect_median = median(global_vars$posteriors$effect) # Maximum A Posteriori probability estimate (MAP)
   
   
   global_vars$effect_posterior_chart <- list(ggplot(global_vars$posteriors, aes(x=effect)) +
     geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
     scale_y_continuous(expand = expansion(mult = c(0, .1))) +
     scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
-    geom_vline(xintercept = global_vars$effect_map, linetype = "dashed", size = .25) +
+    geom_vline(xintercept = global_vars$effect_median, linetype = "dashed", size = .25) +
     #geom_vline(xintercept = c(ci_control$CI_low,ci_control$CI_high), linetype = "dashed", size = .25) +
     #geom_vline(xintercept = c(ci_test$CI_low,ci_test$CI_high), linetype = "dashed", size = .25) +
     annotate(geom="pointrange", # adds interval lines
-     x = global_vars$effect_map,
+     x = global_vars$effect_median,
      y = .2,
      xmin = global_vars$ci_effect$CI_low,
      xmax = global_vars$ci_effect$CI_high,
@@ -430,10 +500,12 @@ observeEvent(global_vars$posteriors, {
 ```{r effect_posterior_chart_display}
 
 renderPlot({
-  req(!is.null(global_vars$effect_posterior_chart))
+  if (!is.null(global_vars$effect_posterior_chart)) {
 
-  global_vars$effect_posterior_chart 
-
+    global_vars$effect_posterior_chart 
+  } else {
+      global_vars$dummy_chart
+    }
 })
 
 ```
@@ -466,15 +538,18 @@ Output: explain how probabilities are inferred
 ### Probabilities
 ```{r probabilities}
 renderUI({
-  req(!is.null(global_vars$posteriors))
+  if (!is.null(global_vars$posteriors)) {
   
-  div(
-    p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
-    p(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
-    p("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
-    p(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
-    p(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
-  )
+    div(
+      p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
+      p(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
+      p("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
+      p(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
+      p(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
+    )
+  } else {
+    h5("Analysis will appear after posteriors are calculated. (Click the button)")
+  }
  
 })
 ```
@@ -483,51 +558,54 @@ renderUI({
 ```{r posterior_analysis_chart}
 
 renderPlot({
-  req(!is.null(global_vars$posteriors))
-  
-  df <- data.frame(
-    x = c(input$equivalence_range[1]/100,0,input$equivalence_range[2]/100,global_vars$roi), # Order is noninferior, better, significant, roi
-    y = c(.6,.45,.3,.15)) %>% 
-    mutate(xend = x + (global_vars$ci_effect$CI_high * 1.5 - global_vars$effect_map),
-           yend = y,
-           color = global_vars$color_key,
-           text = c(
-             paste0("Prob. not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
-             paste0("Prob. better than = ",round(global_vars$p_better*100,1),"%"),
-             paste0("Prob. significant = ",round(global_vars$p_significant*100,1),"%"),
-             paste0("Prob. ROI = ",round(global_vars$p_roi*100,1),"%")
-           ))
-  
-  ggplot(global_vars$posteriors, aes(x=effect)) +
-    geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
-    scale_y_continuous(expand = expansion(mult = c(0, .1))) +
-    scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
-    # geom_vline(xintercept = global_vars$effect_map, linetype = "dashed", size = .25) +
-    geom_vline(xintercept = df$x, linetype = "solid", size = .75, color = df$color) +
-    geom_segment(data = df, aes(x = x, y = y, xend = xend, yend = yend),
-      lineend = "round", 
-      linejoin = "round",
-      size = .75, 
-      arrow = arrow(length = unit(0.075, "inches")),
-      color = df$color 
-    ) + 
-    geom_text(data = df, aes(x = x, y = y, label = text),
-      nudge_y = (.03),
-      hjust = -0.05,
-      size = 3,
-      color = df$color) +
-    annotate("rect", 
-             xmin = min(input$equivalence_range)/100, 
-             xmax = max(input$equivalence_range)/100, 
-             ymin = 0, ymax = Inf, 
-             alpha = .5, fill = "gray") +
-    global_vars$theme
+  if (!is.null(global_vars$posteriors)) {
+    
+    df <- data.frame(
+      x = c(input$equivalence_range[1]/100,0,input$equivalence_range[2]/100,global_vars$roi), # Order is noninferior, better, significant, roi
+      y = c(.6,.45,.3,.15)) %>% 
+      mutate(xend = x + (global_vars$ci_effect$CI_high * 1.5 - global_vars$effect_median),
+             yend = y,
+             color = global_vars$color_key,
+             text = c(
+               paste0("Prob. not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
+               paste0("Prob. better than = ",round(global_vars$p_better*100,1),"%"),
+               paste0("Prob. significant = ",round(global_vars$p_significant*100,1),"%"),
+               paste0("Prob. ROI = ",round(global_vars$p_roi*100,1),"%")
+             ))
+    
+    ggplot(global_vars$posteriors, aes(x=effect)) +
+      geom_density(aes(y=..scaled..), alpha = 0.5, bw = "SJ", adjust = 3) +
+      scale_y_continuous(expand = expansion(mult = c(0, .1))) +
+      scale_x_continuous(labels = scales::percent, limits = c(min(global_vars$posteriors$effect)-.05, max(global_vars$posteriors$effect)+.05)) +
+      # geom_vline(xintercept = global_vars$effect_median, linetype = "dashed", size = .25) +
+      geom_vline(xintercept = df$x, linetype = "solid", size = .75, color = df$color) +
+      geom_segment(data = df, aes(x = x, y = y, xend = xend, yend = yend),
+        lineend = "round", 
+        linejoin = "round",
+        size = .75, 
+        arrow = arrow(length = unit(0.075, "inches")),
+        color = df$color 
+      ) + 
+      geom_text(data = df, aes(x = x, y = y, label = text),
+        nudge_y = 0.03,
+        hjust = -0.05,
+        size = 3,
+        color = df$color) +
+      annotate("rect", 
+               xmin = min(input$equivalence_range)/100, 
+               xmax = max(input$equivalence_range)/100, 
+               ymin = 0, ymax = Inf, 
+               alpha = .5, fill = "gray") +
+      global_vars$theme
+  } else {
+    global_vars$dummy_chart
+  }
 
 })
 
 ```
 
-Row 
+Row {data-height=50}
 -------------------------------------
 
 ```{r pdf_export}
@@ -546,7 +624,5 @@ renderUI({
 
 ```
 
-Row {data-height=50}
------------------------------------------------------------------------
 version 2.0  
 To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.

@@ -16,6 +16,7 @@ p, a, body {
 /* Section headings */
 .section-heading {
   font-size: 1.75em;
+  margin-top: 15px;
 }
 
 /* Numerical inputs */
