@@ -9,7 +9,7 @@ This application takes conversion and traffic inputs for control and test varian
 - Probability of a result that meets ROI expectations
 
 
-See the live version here: https://sdidev.shinyapps.io/bayesian-exp-app/
+See the live version here: https://sdidev.shinyapps.io/bayesian-ab-app/
 
 ## Version History
 #### 2.0 - 1/3/22
