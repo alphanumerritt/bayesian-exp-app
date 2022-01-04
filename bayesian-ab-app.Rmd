@@ -69,7 +69,7 @@ Row {.section-heading data-height=50}
 -------------------------------------
 About Bayesian A/B testing
 
-Row {.tabset .tabset-fade data-height=300}
+Row {.tabset .tabset-fade data-height=350}
 -------------------------------------
 ### Why Bayesian?
 **People like to say that Bayesian is immune to peeking problems**  
@@ -89,28 +89,28 @@ Because everyone keeps talking about Bayesian testing. Plus it's interesting, us
 > If it wasn't obvious, we're assuming you're more familiar with a Frequentist framework for A/B testing
 
 ### Bayes' Theorem
-[Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem){target="_blank"} (a.k.a. Bayes' law and Bayes' rule) describes the probability of an event, based on prior knowledge of conditions that might be related to the event.  
-
-![Bayes' Theorem. Source: By mattbuck (category) - Own work by mattbuck., CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=14658489](https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Bayes%27_Theorem_MMB_01.jpg/1920px-Bayes%27_Theorem_MMB_01.jpg){width=25%}  
-We read this cute sign as, "The probability of A (given B) equals the probability of B (given A) times the probability of A divided by the probability of B." Bayesian analysis always starts with this theorem.
-
-Translate this to an A/B test where our hypothesis is that the effect of B is greater than 0 (B > A). It would read, "the probability of a positive effect (given our test data) equals the probability of our test data (given B > A) times the probability of there being an effect divided by the probability of our test data.
+[Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem){target="_blank"} (a.k.a. Bayes' law and Bayes' rule) describes the probability of an event, based on prior knowledge of conditions that might be related to the event. Bayesian analysis always starts with this theorem.
+<!-- Translate this to an A/B test where our hypothesis is that the effect of B is greater than 0 (B > A). It would read, "the probability of a positive effect (given our test data) equals the probability of our test data (given B > A) times the probability of there being an effect divided by the probability of our test data. -->
+![Bayes' Theorem. Source: Joseph Rocca, https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29](https://miro.medium.com/max/700/1*04pd7c6QIHXYHgAelzzWlg@2x.png){width=45%} [Image source: https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29](https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29){target="_blank"}
 
 ### How it works
-We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app uses the R package `stanarm` to create a logistic regression model which is used to produce posterior distributions from Monte Carlo Markov Chain (MCMC) simulations. While we can't hope to do justice to a full explanation of the methods, we can offer some brief orientation and send you off to some excellent resources for further reading.  
+We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app uses the R package `stanarm` to create a logistic regression model which is used to produce posterior distributions from Markov Chain Monte Carlo (MCMC) simulations. While we can't hope to do justice to a full explanation of the methods, we can offer some brief orientation and send you off to some excellent resources for further reading.  
 
 **Priors** - We use a normal distribution with mean 0 and standard deviation 1 to define priors for both the baseline conversion rate (Intercept in the regression model) and the effect (recipeB in the model) as suggested by `stanarm` [here](https://mc-stan.org/rstanarm/articles/binomial.html#priors){target="_blank"}. This is a fairly weak prior, meaning it won't do too much to influence outcomes. It tells the model we generally expect no effect from the test treatment. Priors define the "probability of there being an effect" portion of the theorem. It can be difficult to conceptualize how priors are used. [This article](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"} provides a nice, simple-ish illustration of it. 
 
 **Using Regression for A/B testing?** - Yep. Seems weird, huh? We took cues from [here](https://easystats.github.io/bayestestR/articles/bayestestR.html){target="_blank"} and [here](https://www.countbayesie.com/blog/2019/6/12/logistic-regression-from-bayes-theorem){target="_blank"} and [here](https://towardsdatascience.com/embracing-bayesian-a-b-test-measurement-and-ditching-p-values-9e444df379ca){target="_blank"}.
 
 
-**MCMC** - Use of simulations (MCMC or others)
+**MCMC** - Our method of Bayesian A/B testing uses Markov Chain Monte Carlo simulations to identify the posterior distribution. Essentially, the simulation creates thousands of permutations of the data (the control conversion rate & the test effect) and determines whether they could be from the same distribution as the test data. It makes a yes/no decision on each permutation and uses that to create boundaries for itself, ending up with a distribution of potential values known as the *posterior distribution*. It's pretty cool! For more than you ever wanted to know about Bayesian inference and MCMC, checkout [this intro](https://nbviewer.org/github/CamDavidsonPilon/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers/blob/master/Chapter3_MCMC/Ch3_IntroMCMC_PyMC3.ipynb#Algorithms-to-perform-MCMC){target="_blank"} and [this extensive article](https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29){target="_blank"}.
 
-**Posteriors** - 
+**Posteriors** - The posterior distribution is comprised of many different values of the control conversion rate and the test effect that are compatible with the observed test data. We derive all of our inferences about the test by mainly doing very simple aggregations on this distribution. For example, to get the probability that B > A, we simply look at the proportion of samples in the posterior in which that condition is true. Pretty simple in the end!
 
 **Credible intervals vs Confidence intervals** - Hopefully no one takes too much issue with us saying they are similar but different. We'll let other people do the [explaining here](https://easystats.github.io/bayestestR/articles/credible_interval.html).
 
 **No expected loss?** - [Many](https://www.chrisstucchio.com/blog/2014/bayesian_ab_decision_rule.html){target="_blank"} [A/B](https://towardsdatascience.com/exploring-bayesian-a-b-testing-with-simulations-7500b4fc55bc){target="_blank"} [testers](https://cran.r-project.org/web/packages/bayesAB/vignettes/introduction.html){target="_blank"} embracing Bayesian testing and are talking all about "Expected Loss", even using it as their primary basis for decision making. While we don't challenge the rationality of doing so, we think it's a difficult concept to understand and embrace, which counters one of the key reasons cited for going Bayesian in the first place (explainability). So we're not going there.
+
+### Sample size planning
+Do it. Use our [frequentist calculators](https://sdidev.shinyapps.io/sample-size-calculator/){target="_blank"} to perform power analysis. If that phrase doesn't mean anything to you, it's the process of determining how large a sample to collect in order to guarantee a Type II (false negative) error rate for some effect size. It's true that you are not bound to a specific sample size with Bayesian test methods, but Type I errors [will still become more likely](http://varianceexplained.org/r/bayesian-ab-testing/){target="_blank} with repeated testing (peeking).
 
 ### Who's Bayes anyway?
 [Thomas Bayes](https://en.wikipedia.org/wiki/Thomas_Bayes){target="_blank"} worked out the basics of the methods back in the 1750's, but his work was published posthumously in 1763.  
@@ -184,7 +184,7 @@ observeEvent(delay_historical_inputs(), {
 ```
 
 
-### Visualize Historical (Prior)
+### Visualize Range for Baseline Conversion Rate
 
 ```{r chart_historicals}
 renderPlot({
@@ -253,8 +253,7 @@ observeEvent(delay_rope_inputs(), {
 })
 ```
 
-### Region of Practical Equivalence (ROPE)
-
+### Visualize Potential Business Impact
 
 ```{r chart_rope}
 
@@ -271,7 +270,7 @@ Enter Test Data
 
 Row {data-height=225}
 -------------------------------------
-### Control
+### Control Variant Data
 
 ```{r control_inputs}
 
@@ -280,7 +279,7 @@ numericInput("conversions_control", label = h5("Conversions in control group"), 
 
 ```
 
-### Test
+### Test Variant Data
 
 ```{r test_inputs}
 
@@ -289,7 +288,7 @@ numericInput("conversions_test", label = h5("Conversions in test group"), value 
 
 ```
 
-### Sample Ratio Mismatch
+### Sample Ratio Mismatch Check
 ```{r srm_check}
 h5("We'll check for sample ratio mismatch using a 99% significance threshold.")
 numericInput("split", label = h5("% of traffic allocated to test variant"), value = 50, min = 1, max = 99)
@@ -428,13 +427,14 @@ observeEvent(global_vars$theme,{
 Row  {data-height=350}
 -------------------------------------
 ### Calculate Posteriors
-Input: use weakest prior
-Output: explain how posteriors are simulated  
+Posterior samples will be calculated using Markov Chain Monte Carlo simulations with 5 chains at 11,000 iterations per chain with 1,000 warm-up samples dropped from each for a total of 50,000 samples in the final posterior distribution. This may seem like overkill but we've seen it improve stability of the posterior distribution.
+
 ```{r posterior_inputs}
 br()
 actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off", lib = "font-awesome"))
 ```
 
+> Note: it is still possible to observe slight variations in posterior distributions by recalculating results.
 
 ### Control & Test Posteriors 
 ```{r variant_posterior_chart}
@@ -584,29 +584,31 @@ observeEvent(global_vars$posteriors, {
 })
 ```
 
-### Explanations
-Output: explain how probabilities are inferred
+### Probabilities {.posterior-output}
+There are many ways to use posterior distributions for analysis. Our favored approach sums posterior samples in different ranges in order to infer the probabilities of the test meeting different criteria. Inverse probabilities may also be inferred by subtracting stated probabilities from 1. 
 
-### Probabilities
+For example, if the probability the test is better than the control is 75%, then the probability the control is better than the test is 25%.
+
 ```{r probabilities}
 renderUI({
   if (!is.null(global_vars$posteriors)) {
   
-    div(
-      p(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
-      p("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
-      p(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
-      p(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
-      p(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
+    div(style="padding-left:30px",
+      h5(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100,1),"%")),
+      h5("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
+      h5(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100,1),"%")),
+      h5(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100,1),"%")),
+      h5(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100,1),"%"))
     )
   } else {
-    h5("Analysis will appear after posteriors are calculated. (Click the button)")
+    h5("Analysis will appear after posteriors are calculated. (click the Analyze Posteriors button)")
   }
  
 })
 ```
 
-### Visualizations
+### Probabilities Visualized
+
 ```{r posterior_analysis_chart}
 
 renderPlot({
@@ -669,7 +671,6 @@ renderPlot({
 
 Row {data-height=50}
 -------------------------------------
-
 ```{r pdf_export}
 # EXPORT TO PDF
 # Package from github: remotes::install_github("dreamRs/capture")
@@ -686,5 +687,6 @@ renderUI({
 
 ```
 
-version 2.0  
-To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.
+Row {data-height=30}
+-------------------------------------
+**version 2.0** - To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.
