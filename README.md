@@ -12,6 +12,9 @@ This application takes conversion and traffic inputs for control and test varian
 See the live version here: https://sdidev.shinyapps.io/bayesian-ab-app/
 
 ## Version History
+#### 2.1 - 1/7/22
+- Replaced `rstan` method (and the logistic regression + MCMC) with more basic `rbeta()` function. This enabled us to use the shinyapps.io server for the app, which didn't care for `stanarm`.
+- Minor updates to color scheme, element positions and documentation
 #### 2.0 - 1/3/22
 - Complete rebuild built on stanarm R package with original concepts
 #### 1.0 - 11/23/21

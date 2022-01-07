@@ -23,8 +23,8 @@ library(tidyr)
 library(ggplot2)
 library(flexdashboard)
 library(shiny)
-library(Rcpp) # depdendency for rstanarm package
-library(rstanarm)
+# library(Rcpp) # depdendency for rstanarm package
+# library(rstanarm)
 library(bayestestR)
 # library(insight)
 # library(see)
@@ -297,7 +297,7 @@ observeEvent(c(input$conversions_control,input$traffic_control,input$conversions
 
 ```{r}
 renderValueBox({
-  valueBox(paste0(round(global_vars$control*100,2),"%"), icon = "fa-font", color = "#00747F")
+  valueBox(paste0(round(global_vars$control*100,2),"%"), icon = "fa-font", color = "#00A2B1")
   
 })
 ```
@@ -306,7 +306,7 @@ renderValueBox({
 ### Test conversion rate
 ```{r}
 renderValueBox({
-  valueBox(paste0(round(global_vars$test*100,2),"%"), icon = "fa-bold", color = "#00747F")
+  valueBox(paste0(round(global_vars$test*100,2),"%"), icon = "fa-bold", color = "#00A2B1")
   
 })
 ```
@@ -315,8 +315,18 @@ renderValueBox({
 ```{r}
 renderValueBox({
   valueBox(paste0(round(global_vars$difference*100,2),"%"), icon = "fa-balance-scale",
-           color = if_else(global_vars$difference < 0, "#FF6D00", "#00A2B1"))
-  
+           color = if_else(global_vars$difference < 0, "#FF6D00", "#00AE4D"))
+    # list(darkblue = '#0060AF',
+  #      darkgreen = '#00753D',
+  #      lightblue = '#00A2B1',
+  #      green = '#00AE4D',
+  #      yellow = '#FFD400',
+  #      lightgreen = '#85C440',
+  #      orange = '#F58220',
+  #      fuschia = '#9A248F',
+  #      red = '#ED1B23',
+  #      pink = '#EC008C'
+  # )
 })
 ```
 
@@ -324,7 +334,7 @@ renderValueBox({
 ```{r}
 renderValueBox({
   valueBox(global_vars$srm$ratio, icon = "fa-adjust",
-           color = if_else(global_vars$srm$test == TRUE, "#FF6D00", "#00A2B1"))
+           color = if_else(global_vars$srm$test == TRUE, "#FF6D00", "#00AE4D"))
   
 })
 ```
@@ -344,20 +354,32 @@ observeEvent(input$calculate_posterior, {
     return(prob)
   }
   
-  # Generate posteriors using bayesian logistic regression
-  global_vars$test_model <- stan_glm(cvr ~ recipe, data = test_data, weights = traffic, family = "binomial",
-                    prior = normal(0,1), # prior of the effect size (main parameter in the posterior)
-                    # setting prior SD to < 1 narrows the prior distribution
-                    prior_intercept = normal(0,1), # prior of the control variant, (weak prior)
-                    chains = 5, iter = 11000, warmup = 1000)
+  # Generate posteriors using bayesian logistic regression and stanarm package
+  # global_vars$test_model <- stan_glm(cvr ~ recipe, data = test_data, weights = traffic, family = "binomial",
+  #                   prior = normal(0,1), # prior of the effect size (main parameter in the posterior)
+  #                   # setting prior SD to < 1 narrows the prior distribution
+  #                   prior_intercept = normal(0,1), # prior of the control variant, (weak prior)
+  #                   chains = 5, iter = 11000, warmup = 1000)
   
   
   # Translate posteriors from logodds to probabilities
-  global_vars$posteriors <- as.data.frame(global_vars$test_model) %>%
-    rename(logit_a = `(Intercept)`, effect_lo = recipeB) %>% 
-    mutate(A = logit2prob(logit_a),
-           B = logit2prob(logit_a + effect_lo)) %>% 
-    mutate(effect = B/A-1)
+  # global_vars$posteriors <- as.data.frame(global_vars$test_model) %>%
+  #   rename(logit_a = `(Intercept)`, effect_lo = recipeB) %>% 
+  #   mutate(A = logit2prob(logit_a),
+  #          B = logit2prob(logit_a + effect_lo)) %>% 
+  #   mutate(effect = B/A-1)
+  
+  n.samples <- 100000
+  prior.a <- 1
+  prior.b <- 1
+  
+  s.control <- rbeta(n.samples, prior.a + input$conversions_control, prior.b + input$traffic_control - input$conversions_control)
+  s.test <- rbeta(n.samples, prior.a + input$conversions_test, prior.b + input$traffic_test - input$conversions_test)
+  
+  s.effect <- s.test / s.control - 1
+
+  global_vars$posteriors <- data.frame(A = s.control, B = s.test, effect = s.effect)
+
   
     
 })
@@ -387,14 +409,14 @@ observeEvent(global_vars$theme,{
 Row  {data-height=350}
 -------------------------------------
 ### Calculate Posteriors
-Posterior samples will be calculated using Markov Chain Monte Carlo simulations with 5 chains at 11,000 iterations per chain with 1,000 warm-up samples dropped from each for a total of 50,000 samples in the final posterior distribution. This may seem like overkill but we've seen it improve stability of the posterior distribution.
+Posterior samples will be generated using Monte Carlo simulations of 100,000 iterations. We combine a weak prior of `alpha = 1` and `beta = 1` with the observed test data into an `rbeta()` function call. To get the posterior distribution for variant A, we execute: `rbeta(iterations, a.conversions + 1, a.nonconversions +1)`.
 
 ```{r posterior_inputs}
 br()
 actionButton("calculate_posterior", "Analyze Test Data", icon = icon("power-off", lib = "font-awesome"))
 ```
 
-> Note: it is still possible to observe slight variations in posterior distributions by recalculating results.
+> Note: it is still possible to observe slight variations in posterior distributions by recalculating results. For this reason, we round all probabilities to 0 decimals.
 
 ### Control & Test Posteriors 
 ```{r variant_posterior_chart}
@@ -403,7 +425,6 @@ renderPlot({
 
   if (!is.null(global_vars$posteriors)) {
     ci_control <- ci(global_vars$posteriors$A, ci = .95)
-    print(ci_control)
     ci_test <- ci(global_vars$posteriors$B, ci = .95)
     medians = c(median(global_vars$posteriors$A),median(global_vars$posteriors$B)) 
     
@@ -464,8 +485,7 @@ observeEvent(global_vars$posteriors, {
   
   # ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
   global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
-  print(global_vars$ci_effect)
-  
+
   global_vars$effect_median = median(global_vars$posteriors$effect) 
   
   
@@ -522,8 +542,8 @@ Row {data-height=350}
 -------------------------------------
 ```{r posterior_analysis, include=FALSE}
 observeEvent(global_vars$posteriors, {
-  global_vars$p_better <- p_direction(global_vars$posteriors$effect) 
-  
+  global_vars$p_better <- p_direction(global_vars$posteriors$effect)
+
   global_vars$p_null <- p_rope(global_vars$posteriors$effect, range = input$equivalence_range/100)$p_ROPE
   
   global_vars$p_significant <- p_significance(global_vars$posteriors$effect, threshold = input$equivalence_range[2]/100)
@@ -532,7 +552,7 @@ observeEvent(global_vars$posteriors, {
   
   global_vars$p_roi <- p_significance(global_vars$posteriors$effect, threshold = global_vars$roi)
   
-  global_vars$color_key <- c("#515151","#E45C00","#004E54","#00747F") # Order is noninferior, better, significant, roi
+  global_vars$color_key <- c("#9A248F","#E45C00","#004E54","#00AE4D") # Order is noninferior, better, significant, roi
   # SDI colors are
   # Light Orange: F58220
   # Orange:FF6D00
@@ -542,6 +562,17 @@ observeEvent(global_vars$posteriors, {
   # Dark Teal: 004E54
   # Dark Gray: 515151
   # Light Gray: 9A9896
+  # list(darkblue = '#0060AF',
+  #      darkgreen = '#00753D',
+  #      lightblue = '#00A2B1',
+  #      green = '#00AE4D',
+  #      yellow = '#FFD400',
+  #      lightgreen = '#85C440',
+  #      orange = '#F58220',
+  #      fuschia = '#9A248F',
+  #      red = '#ED1B23',
+  #      pink = '#EC008C'
+  # )
 })
 ```
 
@@ -556,7 +587,7 @@ renderUI({
   
     div(style="padding-left:30px",
       h5(style = paste0("color:",global_vars$color_key[1]),"Probability test is not inferior to control: ",paste0(round(global_vars$p_noninferior*100),"%")),
-      h5("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100,1),"%")),
+      h5("Probability test effect is negligible: ",paste0(round(global_vars$p_null*100),"%")),
       h5(style = paste0("color:",global_vars$color_key[2]),"Probability test is better than control: ",paste0(round(global_vars$p_better*100),"%")),
       h5(style = paste0("color:",global_vars$color_key[3]),"Probability test is non-negligible: ",paste0(round(global_vars$p_significant*100),"%")),
       h5(style = paste0("color:",global_vars$color_key[4]),"Probability test will deliver desired ROI: ",paste0(round(global_vars$p_roi*100),"%"))
@@ -582,10 +613,10 @@ renderPlot({
              yend = y,
              color = global_vars$color_key,
              text = c(
-               paste0("Not inferior = ",round(global_vars$p_noninferior*100,1),"%"),
-               paste0("Better than = ",round(global_vars$p_better*100,1),"%"),
-               paste0("Significant = ",round(global_vars$p_significant*100,1),"%"),
-               paste0("ROI = ",round(global_vars$p_roi*100,1),"%")
+               paste0("Not inferior = ",round(global_vars$p_noninferior*100),"%"),
+               paste0("Better than = ",round(global_vars$p_better*100),"%"),
+               paste0("Significant = ",round(global_vars$p_significant*100),"%"),
+               paste0("ROI = ",round(global_vars$p_roi*100),"%")
              ))
     
     ggplot(global_vars$posteriors, aes(x=effect)) +
@@ -659,16 +690,18 @@ Because everyone keeps talking about Bayesian testing. Plus it's interesting, us
 ![Bayes' Theorem. Source: Joseph Rocca, https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29](https://miro.medium.com/max/700/1*04pd7c6QIHXYHgAelzzWlg@2x.png){width=45%} [Image source: https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29](https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29){target="_blank"}
 
 ### How it works
-We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. This app uses the R package `stanarm` to create a logistic regression model which is used to produce posterior distributions from Markov Chain Monte Carlo (MCMC) simulations. While we can't hope to do justice to a full explanation of the methods, we can offer some brief orientation and send you off to some excellent resources for further reading.  
+We must accept that there may be many different approaches to A/B testing under the banner of Bayesian frameworks. Hence, your mileage on these generalizations may vary. A prior version of this app used the R package `stanarm` to create a logistic regression model which was used to produce posterior distributions from Markov Chain Monte Carlo (MCMC) simulations. We switched to a much simpler approach using baseR to run just Monte Carlo simulations for a beta distribution comprised of the test data + a weak `beta(1,1)` prior. The results were comparable in all our tests. While we can't hope to do justice to a full explanation of the methods, we can offer some brief orientation and send you off to some excellent resources for further reading.  
 
-**Priors** - We use a normal distribution with mean 0 and standard deviation 1 to define priors for both the baseline conversion rate (Intercept in the regression model) and the effect (recipeB in the model) as suggested by `stanarm` [here](https://mc-stan.org/rstanarm/articles/binomial.html#priors){target="_blank"}. This is a fairly weak prior, meaning it won't do too much to influence outcomes. It tells the model we generally expect no effect from the test treatment. Priors define the "probability of there being an effect" portion of the theorem. It can be difficult to conceptualize how priors are used. [This article](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"} provides a nice, simple-ish illustration of it. 
+**Priors** - Priors represent your knowledge about probabilities before collecting any data. For example, do you have some expectations around the baseline conversion rate that are likely to be reflected in the control variant of the test? Is the test likely to be flat? (Most are.) This information gets built into your expectations of the posterior distribution. It can be difficult to conceptualize how priors are used. [This article](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"} provides a nice, simple-ish illustration of it. 
+<!-- We use a normal distribution with mean 0 and standard deviation 1 to define priors for both the baseline conversion rate (Intercept in the regression model) and the effect (recipeB in the model) as suggested by `stanarm` [here](https://mc-stan.org/rstanarm/articles/binomial.html#priors){target="_blank"}. This is a fairly weak prior, meaning it won't do too much to influence outcomes. It tells the model we generally expect no effect from the test treatment. Priors define the "probability of there being an effect" portion of the theorem. It can be difficult to conceptualize how priors are used. [This article](https://www.countbayesie.com/blog/2015/4/25/bayesian-ab-testing){target="_blank"} provides a nice, simple-ish illustration of it.  -->
 
-**Using Regression for A/B testing?** - Yep. Seems weird, huh? We took cues from [here](https://easystats.github.io/bayestestR/articles/bayestestR.html){target="_blank"} and [here](https://www.countbayesie.com/blog/2019/6/12/logistic-regression-from-bayes-theorem){target="_blank"} and [here](https://towardsdatascience.com/embracing-bayesian-a-b-test-measurement-and-ditching-p-values-9e444df379ca){target="_blank"}.
+<!-- **Using Regression for A/B testing?** - Yep. Seems weird, huh? We took cues from [here](https://easystats.github.io/bayestestR/articles/bayestestR.html){target="_blank"} and [here](https://www.countbayesie.com/blog/2019/6/12/logistic-regression-from-bayes-theorem){target="_blank"} and [here](https://towardsdatascience.com/embracing-bayesian-a-b-test-measurement-and-ditching-p-values-9e444df379ca){target="_blank"}. -->
 
 
-**MCMC** - Our method of Bayesian A/B testing uses Markov Chain Monte Carlo simulations to identify the posterior distribution. Essentially, the simulation creates thousands of permutations of the data (the control conversion rate & the test effect) and determines whether they could be from the same distribution as the test data. It makes a yes/no decision on each permutation and uses that to create boundaries for itself, ending up with a distribution of potential values known as the *posterior distribution*. It's pretty cool! For more than you ever wanted to know about Bayesian inference and MCMC, checkout [this intro](https://nbviewer.org/github/CamDavidsonPilon/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers/blob/master/Chapter3_MCMC/Ch3_IntroMCMC_PyMC3.ipynb#Algorithms-to-perform-MCMC){target="_blank"} and [this extensive article](https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29){target="_blank"}.
+<!-- **Monte Carlo simulation** - Our method of Bayesian A/B testing uses Monte Carlo simulations to identify the posterior distribution. Essentially, the simulation creates thousands of permutations of the data (the control and test conversion rates) that are compatible with our observed data + our priors. This generates a distribution of potential values known as the *posterior distribution*.  -->
+<!-- It's pretty cool! For more than you ever wanted to know about Bayesian inference and MCMC, checkout [this intro](https://nbviewer.org/github/CamDavidsonPilon/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers/blob/master/Chapter3_MCMC/Ch3_IntroMCMC_PyMC3.ipynb#Algorithms-to-perform-MCMC){target="_blank"} and [this extensive article](https://towardsdatascience.com/bayesian-inference-problem-mcmc-and-variational-inference-25a8aa9bce29){target="_blank"}. -->
 
-**Posteriors** - The posterior distribution is comprised of many different values of the control conversion rate and the test effect that are compatible with the observed test data. We derive all of our inferences about the test by mainly doing very simple aggregations on this distribution. For example, to get the probability that B > A, we simply look at the proportion of samples in the posterior in which that condition is true. Pretty simple in the end!
+**Posteriors** - Our method of Bayesian A/B testing uses Monte Carlo simulations to identify the posterior distribution. Essentially, the simulation creates thousands of permutations of the data (the control and test conversion rates) that are compatible with our observed data + our priors. This generates a distribution of potential values known as the *posterior distribution*. We derive all of our inferences about the test by mainly doing very simple aggregations on this distribution. For example, to get the probability that B > A, we simply look at the proportion of samples in the posterior in which that condition is true. Pretty simple in the end!
 
 **Credible intervals vs Confidence intervals** - Hopefully no one takes too much issue with us saying they are similar but different. We'll let other people do the [explaining here](https://easystats.github.io/bayestestR/articles/credible_interval.html).
 
