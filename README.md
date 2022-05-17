@@ -12,7 +12,7 @@ This application takes conversion and traffic inputs for control and test varian
 See the live version here: https://sdidev.shinyapps.io/bayesian-ab-app/
 
 ## Version History
-## #### 2.21 - 5/17/22
+#### 2.21 - 5/17/22
 - Updated nav links
 - Added some comments to code
 - Commented out buggy bookmarking code
