@@ -7,13 +7,14 @@ output:
     vertical_layout: scroll
     logo: logo-sm.png
     favicon: favicon.png
-    #fig_height: 3
     navbar: 
-      - { title: "Sequential App", href: "https://sdidev.shinyapps.io/sequential-test-calculator/" }
-      - { title: "Sample Size", href: "https://sdidev.shinyapps.io/sample-size-calculator/" }
-      - { title: "Runtime", href: "https://sdidev.shinyapps.io/sample-size-calculator-runtime/" }
-      - { title: "Impact Simulation", href: "https://sdidev.shinyapps.io/test-result-simulator/" }
-      - { title: "Experimentation ROI", "href:https://sdidev.shinyapps.io/experimentation-roi/" }
+      - { title: "Planning: MDE-Based Calculator", href: "https://sdidev.shinyapps.io/sample-size-calculator/" }
+      - { title: "Planning: Runtime-Based Calculator", href: "https://sdidev.shinyapps.io/sample-size-calculator-runtime/" }
+      - { title: "Planning/Analysis: Sequential Testing", href: "https://sdidev.shinyapps.io/sequential-test-calculator/" }
+      - { title: "Analysis: Test Results Assessment", href: "https://sdidev.shinyapps.io/ABTestAnalysis/" }
+      - { title: "Analysis: Bayesian Testing", href: "https://sdidev.shinyapps.io/bayesian-ab-app/" }
+      - { title: "Simulator: A/B Test Result", href: "https://sdidev.shinyapps.io/test-result-simulator/" }
+      - { title: "Simulator: Experimentation ROI", href: "https://sdidev.shinyapps.io/experimentation-roi/" }
 runtime: shiny
 ---
 
@@ -23,7 +24,7 @@ library(tidyr)
 library(ggplot2)
 library(flexdashboard)
 library(shiny)
-library(bayestestR) # Currently just for confidence intervals...lazy
+library(bayestestR) # Currently just used for confidence intervals, would be easy to remove with direct calculation
 
 
 
@@ -39,18 +40,18 @@ $('.navbar-logo').wrap('<a href="https://www.searchdiscovery.com/how-we-help/ser
 # is captured in the URL, enabling someone to "come back" to the exact configuration at any point.
 # See details at: https://shiny.rstudio.com/reference/shiny/1.5.0/updateQueryString.html.
 # And at https://shiny.rstudio.com/articles/bookmarking-state.html
-# This chunk is wrapped in a <div> that sets the display to none because, otherwise, a little
-# bit of JS gets rendered that chunk options are unable to turn off.
-enableBookmarking("url")
-setBookmarkExclude(c("calculate_posterior")) # List any inputs to exclude here
-observe({
-  # Trigger this observer every time an input changes
-  reactiveValuesToList(input)
-  session$doBookmark()
-})
-onBookmarked(function(url) {
-  updateQueryString(url)
-})
+# (CURRENTLY NOT FUNCTIONAL)
+
+# enableBookmarking("url")
+# setBookmarkExclude(c("calculate_posterior")) # List any inputs to exclude here
+# observe({
+#   # Trigger this observer every time an input changes
+#   reactiveValuesToList(input)
+#   session$doBookmark()
+# })
+# onBookmarked(function(url) {
+#   updateQueryString(url)
+# })
 ```
 
 
@@ -181,6 +182,7 @@ renderPlot({
 
 
 ```{r rope_chart_var, include=FALSE}
+# Delay reactivity of inputs so that things don't try to update repeatedly when changing values
 delay_rope_inputs <- debounce(reactive({
   c(
     input$conversion_value,
@@ -280,6 +282,7 @@ renderUI({
 
 
 ```{r srm_calc, include=FALSE}
+# Check for SRM when test result inputs change
 observeEvent(c(input$traffic_test,input$traffic_control,input$srm, input$split), {
   req(input$traffic_test > 0)
   req(input$traffic_control > 0)
@@ -294,6 +297,7 @@ observeEvent(c(input$traffic_test,input$traffic_control,input$srm, input$split),
   srm_test_boolean <- srm_pvalue <= 0.01
   srm_ratio <- paste0(round(ratio_control,1),"%:",round(ratio_test,1),"%")
   
+  # Put the SRM test results in a global variable
   global_vars$srm <- list("test" = srm_test_boolean, "pval" = srm_pvalue, "ratio" = srm_ratio)
 }, ignoreInit = TRUE)
 ```
@@ -301,6 +305,8 @@ observeEvent(c(input$traffic_test,input$traffic_control,input$srm, input$split),
 Row 
 -------------------------------------
 ```{r rate_calc, include=FALSE}
+# Calculate conversion rates and lift when test results inputs change
+# Put into variables
 observeEvent(c(input$conversions_control,input$traffic_control,input$conversions_test,input$traffic_test),{
   global_vars$control <- input$conversions_control/input$traffic_control
   global_vars$test <- input$conversions_test/input$traffic_test
@@ -348,13 +354,15 @@ Row {.section-heading data-height=50}
 Estimate Posterior Distributions
 
 ```{r posterior_calc, include=FALSE}
+# Calculate posterior only on button push
 observeEvent(input$calculate_posterior, {
   test_data <- data.frame(recipe = c("A","B"), cvr = c(global_vars$control, global_vars$test), traffic = c(input$traffic_control, input$traffic_test))
 
   n.samples <- 100000
-  prior.a <- 1
-  prior.b <- 1
+  prior.a <- 1 # 1 is a weak prior
+  prior.b <- 1 # 1 is a weak prior
   
+  # At the core, just create beta distributions based on observed data and priors just declared
   s.control <- rbeta(n.samples, prior.a + input$conversions_control, prior.b + input$traffic_control - input$conversions_control)
   s.test <- rbeta(n.samples, prior.a + input$conversions_test, prior.b + input$traffic_test - input$conversions_test)
   
@@ -362,7 +370,7 @@ observeEvent(input$calculate_posterior, {
 
   global_vars$posteriors <- data.frame(A = s.control, B = s.test, effect = s.effect)
   
- 
+ # Resulting probabilities are simple aggregations of the beta distributions created
   global_vars$p_better <- sum(global_vars$posteriors$effect > 0)/n.samples
   global_vars$p_roi <- sum(global_vars$posteriors$effect >= global_vars$roi)/n.samples
   global_vars$p_significant <- sum(global_vars$posteriors$effect > input$equivalence_range[2]/100)/n.samples
@@ -374,6 +382,7 @@ observeEvent(input$calculate_posterior, {
 
 ```{r placeholder_chart, include=FALSE}
 
+# Create a placeholder chart to use before actual test data has been submitted
 observeEvent(global_vars$theme,{
   dummy_df <- data.frame(cvr = seq(0,1, length=100)) %>% 
       mutate(prob = dbeta(cvr, 5, 45)) #%>% 
@@ -470,7 +479,6 @@ renderPlot({
 observeEvent(global_vars$posteriors, {
   req(!is.null(global_vars$posteriors))
   
-  # ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
   global_vars$ci_effect <- ci(global_vars$posteriors$effect, ci = .95)
 
   global_vars$effect_median = median(global_vars$posteriors$effect) 
@@ -715,4 +723,4 @@ renderUI({
 
 Row {data-height=30}
 -------------------------------------
-**version 2.2** - To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.
+**version 2.21** - To see version history, report bugs and submit feature requests [click here](https://github.com/alphanumerritt/bayesian-exp-app/issues){target="_blank"}.
